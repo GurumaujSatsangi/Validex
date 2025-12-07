@@ -212,7 +212,15 @@ document.addEventListener('click', async (ev) => {
     // Build Bootstrap-styled HTML table
     let html = `
       <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-        <table class="table table-sm table-striped" id="issuesModalTable">
+        <style>
+          .issues-table { font-size: 1rem; }
+          .issues-table th { font-size: 0.7rem; font-weight: 600; padding: 6px 4px; }
+          .issues-table td { padding: 6px 4px; vertical-align: middle; }
+          .issues-table .badge { font-size: 0.7rem; padding: 3px 6px; }
+          .issues-table .btn-sm { padding: 3px 6px; font-size: 0.7rem; }
+          .issues-table a { font-size: 0.8rem; }
+        </style>
+        <table class="table table-sm table-striped issues-table" id="issuesModalTable">
           <thead class="table-light">
             <tr>
               <th>Provider</th>
@@ -242,17 +250,17 @@ document.addEventListener('click', async (ev) => {
           <td><strong>${escapeHtml(it.field_name)}</strong></td>
           <td>${escapeHtml(it.old_value)}</td>
           <td><span class="badge bg-info">${escapeHtml(it.suggested_value)}</span></td>
-          <td><span class="badge ${sourceType === 'NPI_API' ? 'bg-primary' : sourceType === 'AZURE_POI' ? 'bg-info' : sourceType === 'AZURE_MAPS' ? 'bg-cyan' : sourceType === 'SCRAPING_FALLBACK' ? 'bg-warning' : 'bg-secondary'}">${escapeHtml(it.source_type || 'UNKNOWN')}</span></td>
+          <td><span class="badge ${sourceType === 'NPI API' ? 'bg-primary' : sourceType === 'AZURE POI' ? 'bg-warning' : sourceType === 'AZURE MAPS' ? 'bg-cyan' : sourceType === 'SCRAPING FALLBACK' ? 'bg-warning' : 'bg-secondary'}">${escapeHtml(it.source_type || 'UNKNOWN')}</span></td>
           <td><span class="badge bg-secondary">${confidence}%</span></td>
           <td><span class="badge bg-danger">${escapeHtml(it.severity)}</span></td>
           <td><span class="badge ${statusBadgeClass}">${escapeHtml(it.status)}</span></td>
           <td class="action-cell">
             ${isOpen ? `
               <button class="btn btn-sm btn-success accept-modal-issue" data-issue-id="${escapeHtml(it.id)}" data-provider-id="${it.provider_id}">
-                <i class="bi bi-check-circle"></i> Accept
+                <i class="bi bi-check-circle"></i>
               </button>
               <button class="btn btn-sm btn-danger reject-modal-issue" data-issue-id="${escapeHtml(it.id)}">
-                <i class="bi bi-x-circle"></i> Reject
+                <i class="bi bi-x-circle"></i>
               </button>
             ` : `
               <span class="text-muted">Closed</span>
