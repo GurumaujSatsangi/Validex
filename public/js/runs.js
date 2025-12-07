@@ -26,8 +26,9 @@ async function loadRuns(){
         <td><span class="badge bg-warning text-dark">${r.needs_review_count ?? '—'}</span></td>
         <td>${r.completed_at ? escapeHtml(new Date(r.completed_at).toLocaleString()) : '—'}</td>
         <td>
-          <div class="d-flex gap-2">
+          <div class="d-flex gap-2 flex-wrap">
             ${r.needs_review_count > 0 ? `<button class="btn btn-sm btn-info view-issues-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-eye"></i> View Issues</button>` : '<span class="text-muted">No issues</span>'}
+            ${r.needs_review_count === 0 ? `<button class="btn btn-sm btn-success download-csv-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-download"></i> Download</button>` : ''}
             <button class="btn btn-sm btn-outline-danger delete-run-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-trash"></i> Delete</button>
           </div>
         </td>
@@ -159,6 +160,46 @@ function escapeHtml(text) {
 
 // Handle clicking View Issues for a run using event delegation
 document.addEventListener('click', async (ev) => {
+  // Handle Download CSV button in runs table
+  const downloadBtn = ev.target.closest('.download-csv-btn');
+  if (downloadBtn) {
+    const runId = downloadBtn.dataset.runId;
+    try {
+      Swal.fire({
+        title: 'Exporting CSV',
+        html: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Exporting...</span></div>',
+        allowOutsideClick: false,
+        showConfirmButton: false
+      });
+
+      const res = await fetch(`/api/validation-runs/${runId}/export`);
+      if (!res.ok) {
+        const json = await res.json();
+        Swal.close();
+        Swal.fire('Error', json?.error || 'Could not export CSV', 'error');
+        return;
+      }
+
+      // Trigger file download
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `validated_providers_run_${runId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+
+      Swal.close();
+      Swal.fire('Success', 'CSV exported successfully', 'success');
+    } catch (err) {
+      Swal.close();
+      Swal.fire('Error', err?.message || String(err), 'error');
+    }
+    return;
+  }
+
   const deleteBtn = ev.target.closest('.delete-run-btn');
   if (deleteBtn) {
     const runId = deleteBtn.dataset.runId;
@@ -230,10 +271,7 @@ document.addEventListener('click', async (ev) => {
           <button id="rejectAllIssues" class="btn btn-outline-danger btn-sm" ${hasOpen ? '' : 'disabled'}>
             <i class="bi bi-x-circle"></i> Reject All
           </button>
-          <button id="downloadValidatedCsv" class="btn btn-primary btn-sm" ${hasOpen ? 'disabled' : ''}>
-            <i class="bi bi-download"></i> Download Validated CSV
-          </button>
-          <small id="issuesHint" class="text-muted">${hasOpen ? 'Resolve all issues to enable download.' : 'All issues closed. You can download the validated CSV.'}</small>
+          <small id="issuesHint" class="text-muted">${hasOpen ? 'Resolve all issues to enable download.' : 'All issues closed.'}</small>
         </div>
         <table class="table table-sm table-striped issues-table" id="issuesModalTable">
           <thead class="table-light">
@@ -305,13 +343,11 @@ document.addEventListener('click', async (ev) => {
           const hasOpen = runHasOpenIssues();
           const acceptAllBtn = document.getElementById('acceptAllIssues');
           const rejectAllBtn = document.getElementById('rejectAllIssues');
-          const downloadBtn = document.getElementById('downloadValidatedCsv');
           const hint = document.getElementById('issuesHint');
 
           if (acceptAllBtn) acceptAllBtn.disabled = !hasOpen;
           if (rejectAllBtn) rejectAllBtn.disabled = !hasOpen;
-          if (downloadBtn) downloadBtn.disabled = hasOpen;
-          if (hint) hint.textContent = hasOpen ? 'Resolve all issues to enable download.' : 'All issues closed. You can download the validated CSV.';
+          if (hint) hint.textContent = hasOpen ? 'Resolve all issues to enable download.' : 'All issues closed.';
         };
 
         const markRowClosed = (row, statusText) => {
@@ -380,19 +416,33 @@ document.addEventListener('click', async (ev) => {
         document.getElementById('acceptAllIssues')?.addEventListener('click', async () => {
           const btn = document.getElementById('acceptAllIssues');
           if (btn) btn.disabled = true;
+          
+          Swal.fire({
+            title: 'Processing',
+            html: '<div class="spinner-border text-success" role="status"><span class="visually-hidden">Processing...</span></div><p class="mt-3">Accepting all issues...</p>',
+            allowOutsideClick: false,
+            showConfirmButton: false
+          });
+
           try {
             const res = await fetch(`/api/issues/run/${runId}/accept-all`, { method: 'POST' });
             if (!res.ok) {
               const json = await res.json();
-              alert('Failed to accept all: ' + (json?.error || 'Unknown error'));
+              Swal.close();
+              Swal.fire('Error', 'Failed to accept all: ' + (json?.error || 'Unknown error'), 'error');
               if (btn) btn.disabled = false;
               return;
             }
 
+            // Mark all rows as closed with ACCEPTED status
             document.querySelectorAll('#issuesModalTable tbody tr').forEach(row => markRowClosed(row, 'ACCEPTED'));
             refreshBulkButtons();
+            
+            Swal.close();
+            Swal.fire('Success', 'All issues accepted successfully!', 'success');
           } catch (err) {
-            alert('Error: ' + err.message);
+            Swal.close();
+            Swal.fire('Error', err.message || String(err), 'error');
             if (btn) btn.disabled = false;
           }
         });
@@ -401,30 +451,35 @@ document.addEventListener('click', async (ev) => {
         document.getElementById('rejectAllIssues')?.addEventListener('click', async () => {
           const btn = document.getElementById('rejectAllIssues');
           if (btn) btn.disabled = true;
+          
+          Swal.fire({
+            title: 'Processing',
+            html: '<div class="spinner-border text-danger" role="status"><span class="visually-hidden">Processing...</span></div><p class="mt-3">Rejecting all issues...</p>',
+            allowOutsideClick: false,
+            showConfirmButton: false
+          });
+
           try {
             const res = await fetch(`/api/issues/run/${runId}/reject-all`, { method: 'POST' });
             if (!res.ok) {
               const json = await res.json();
-              alert('Failed to reject all: ' + (json?.error || 'Unknown error'));
+              Swal.close();
+              Swal.fire('Error', 'Failed to reject all: ' + (json?.error || 'Unknown error'), 'error');
               if (btn) btn.disabled = false;
               return;
             }
 
+            // Mark all rows as closed with REJECTED status
             document.querySelectorAll('#issuesModalTable tbody tr').forEach(row => markRowClosed(row, 'REJECTED'));
             refreshBulkButtons();
+            
+            Swal.close();
+            Swal.fire('Success', 'All issues rejected successfully!', 'success');
           } catch (err) {
-            alert('Error: ' + err.message);
+            Swal.close();
+            Swal.fire('Error', err.message || String(err), 'error');
             if (btn) btn.disabled = false;
           }
-        });
-
-        // Download validated CSV (enabled only when all issues are closed)
-        document.getElementById('downloadValidatedCsv')?.addEventListener('click', () => {
-          if (runHasOpenIssues()) {
-            alert('Resolve all issues before downloading.');
-            return;
-          }
-          window.location.href = `/api/validation-runs/${runId}/export`;
         });
 
         // Initial state
