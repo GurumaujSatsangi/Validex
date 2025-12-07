@@ -10,7 +10,8 @@ export async function runDirectoryManagement(provider, runId) {
   let needsReview = false;
 
   for (const issue of issues) {
-    if (issue.confidence > 0.9) {
+    // If action is AUTO_ACCEPT, automatically update the provider
+    if (issue.action === "AUTO_ACCEPT") {
       await supabase
         .from("providers")
         .update({
@@ -20,11 +21,13 @@ export async function runDirectoryManagement(provider, runId) {
         })
         .eq("id", provider.id);
 
+      // Mark issue as ACCEPTED in database
       await supabase
         .from("validation_issues")
         .update({ status: "ACCEPTED" })
         .eq("id", issue.id);
     } else {
+      // Issue needs manual review
       needsReview = true;
       await supabase
         .from("providers")

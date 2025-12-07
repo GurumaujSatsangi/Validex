@@ -283,6 +283,7 @@ document.addEventListener('click', async (ev) => {
               <th>Source</th>
               <th>Confidence</th>
               <th>Severity</th>
+              <th>Action</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -296,16 +297,40 @@ document.addEventListener('click', async (ev) => {
       const isOpen = it.status === 'OPEN';
       const statusBadgeClass = it.status === 'ACCEPTED' ? 'bg-success' : it.status === 'REJECTED' ? 'bg-secondary' : 'bg-warning text-dark';
       const sourceType = it.source_type || 'UNKNOWN';
+      const action = it.action || 'NEEDS_REVIEW';
+      const actionBadgeClass = action === 'AUTO_ACCEPT' ? 'bg-success' : 'bg-warning text-dark';
+      
+      // Format suggested value - handle JSON arrays
+      let suggestedDisplay = it.suggested_value || '';
+      try {
+        const parsed = JSON.parse(suggestedDisplay);
+        if (Array.isArray(parsed)) {
+          suggestedDisplay = parsed.slice(0, 3).join(', ') + (parsed.length > 3 ? '...' : '');
+        } else if (typeof parsed === 'object') {
+          suggestedDisplay = JSON.stringify(parsed).substring(0, 100);
+        }
+      } catch (e) {
+        // Not JSON, use as-is
+      }
+
+      // Source badge color mapping
+      let sourceBadgeClass = 'bg-secondary';
+      if (sourceType === 'NPI_API') sourceBadgeClass = 'bg-primary';
+      else if (sourceType === 'AZURE_POI') sourceBadgeClass = 'bg-info';
+      else if (sourceType === 'AZURE_MAPS') sourceBadgeClass = 'bg-success';
+      else if (sourceType === 'SCRAPING_ENRICHMENT') sourceBadgeClass = 'bg-warning';
+      else if (sourceType === 'PDF_OCR') sourceBadgeClass = 'bg-danger';
       
       html += `
         <tr data-issue-id="${escapeHtml(it.id)}">
           <td><a href="/provider/${it.provider_id}" target="_blank" class="text-decoration-none">${providerName}</a></td>
           <td><strong>${escapeHtml(it.field_name)}</strong></td>
           <td>${escapeHtml(it.old_value)}</td>
-          <td><span class="badge bg-info">${escapeHtml(it.suggested_value)}</span></td>
-          <td><span class="badge ${sourceType === 'NPI API' ? 'bg-primary' : sourceType === 'AZURE POI' ? 'bg-warning' : sourceType === 'AZURE MAPS' ? 'bg-cyan' : sourceType === 'SCRAPING FALLBACK' ? 'bg-warning' : 'bg-secondary'}">${escapeHtml(it.source_type || 'UNKNOWN')}</span></td>
+          <td><span class="badge bg-info" style="white-space: normal; text-align: left;">${escapeHtml(suggestedDisplay)}</span></td>
+          <td><span class="badge ${sourceBadgeClass}">${escapeHtml(it.source_type || 'UNKNOWN')}</span></td>
           <td><span class="badge bg-secondary">${confidence}%</span></td>
           <td><span class="badge bg-danger">${escapeHtml(it.severity)}</span></td>
+          <td><span class="badge ${actionBadgeClass}">${escapeHtml(action)}</span></td>
           <td><span class="badge ${statusBadgeClass}">${escapeHtml(it.status)}</span></td>
           <td class="action-cell">
             ${isOpen ? `
@@ -336,7 +361,7 @@ document.addEventListener('click', async (ev) => {
 
         const runHasOpenIssues = () => {
           const rows = Array.from(document.querySelectorAll('#issuesModalTable tbody tr'));
-          return rows.some(r => r.querySelector('td:nth-child(8) .badge')?.textContent === 'OPEN');
+          return rows.some(r => r.querySelector('td:nth-child(9) .badge')?.textContent === 'OPEN');
         };
 
         const refreshBulkButtons = () => {
@@ -351,7 +376,7 @@ document.addEventListener('click', async (ev) => {
         };
 
         const markRowClosed = (row, statusText) => {
-          const statusBadge = row.querySelector('td:nth-child(8) .badge');
+          const statusBadge = row.querySelector('td:nth-child(9) .badge');
           if (statusBadge) {
             statusBadge.className = statusText === 'ACCEPTED' ? 'badge bg-success' : 'badge bg-secondary';
             statusBadge.textContent = statusText;

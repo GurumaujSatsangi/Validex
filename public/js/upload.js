@@ -77,7 +77,7 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
     const startTime = Date.now();
 
     Swal.fire({
-      title: 'Processing PDF with OCR',
+      title: 'Processing PDF',
       html: `
         <div class="mb-3">
           <div class="progress" style="height: 25px;">

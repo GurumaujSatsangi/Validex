@@ -1,5 +1,12 @@
 import { supabase } from "../../supabaseClient.js";
 import { normalizeAddressComponent, normalizeText } from "../tools/addressUtils.js";
+import {
+  addressSimilarity,
+  sourceWeightedVote,
+  finalScore,
+  determineAction,
+  determineSeverity
+} from "../utils/scoringUtils.js";
 
 /**
  * Normalize specialty text for comparison by:
@@ -38,26 +45,48 @@ export async function runQualityAssurance(provider, runId) {
 
   const suggested = {};
 
+  // Helper: Extract boolean match for each source
+  const sourceMatches = {
+    npi: false,
+    azure: false,
+    scrape: false,
+    pdf: false
+  };
+
   // Check NPI data
   const npiSource = sources.find(s => s.source_type === "NPI_API");
   if (npiSource && npiSource.raw_data && npiSource.raw_data.isFound) {
+    sourceMatches.npi = true;
     const npiPhone = npiSource.raw_data.phone;
     if (npiPhone && normalizePhone(npiPhone) !== normalizePhone(provider.phone)) {
+      // Compute confidence score using new algorithm
+      const phoneScore = 1; // Phone mismatch detected = high signal
+      const addressScore = addressSimilarity(provider.address_line1, provider.address_line1); // Same address = perfect match
+      const srcScore = sourceWeightedVote({ npi: true, azure: false, scrape: false, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore, phoneScore: 0 });
+
       suggested.phone = {
         oldValue: provider.phone,
         suggestedValue: npiPhone,
-        confidence: 0.9,
-        sourceType: "NPI_API"
+        confidence,
+        sourceType: "NPI_API",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
       };
     }
 
     const npiSpec = npiSource.raw_data.speciality;
     if (npiSpec && normalizeSpecialty(npiSpec) !== normalizeSpecialty(provider.speciality)) {
+      const srcScore = sourceWeightedVote({ npi: true, azure: false, scrape: false, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.5, phoneScore: 0 });
+
       suggested.speciality = {
         oldValue: provider.speciality,
         suggestedValue: npiSpec,
-        confidence: 0.85,
-        sourceType: "NPI_API"
+        confidence,
+        sourceType: "NPI_API",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
       };
     }
   }
@@ -65,15 +94,21 @@ export async function runQualityAssurance(provider, runId) {
   // Check Azure Maps address validation
   const azureSource = sources.find(s => s.source_type === "AZURE_MAPS");
   if (azureSource && azureSource.raw_data) {
+    sourceMatches.azure = true;
     const azureData = azureSource.raw_data;
 
     // If address was not found (NO_RESULTS), create a low-confidence issue
     if (!azureData.isValid && azureData.reason === "NO_RESULTS") {
+      const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0, phoneScore: 0 });
+
       suggested.address_line1 = {
         oldValue: provider.address_line1 || '',
         suggestedValue: "Address not found - please verify",
-        confidence: 0.3,
-        sourceType: "AZURE_MAPS"
+        confidence,
+        sourceType: "AZURE_MAPS",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
       };
     }
 
@@ -81,11 +116,17 @@ export async function runQualityAssurance(provider, runId) {
     if (azureData.isValid && azureData.formattedAddress) {
       // Compare ZIP code
       if (azureData.postalCode && provider.zip && azureData.postalCode !== provider.zip) {
+        const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+        const addrScore = addressSimilarity(provider.address_line1, azureData.formattedAddress);
+        const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
+
         suggested.zip = {
           oldValue: provider.zip,
           suggestedValue: azureData.postalCode,
-          confidence: 0.9,
-          sourceType: "AZURE_MAPS"
+          confidence,
+          sourceType: "AZURE_MAPS",
+          action: determineAction(confidence),
+          severity: determineSeverity(confidence)
         };
       }
 
@@ -95,11 +136,17 @@ export async function runQualityAssurance(provider, runId) {
         const normalizedProviderCity = normalizeAddressComponent(provider.city);
         
         if (normalizedAzureCity !== normalizedProviderCity) {
+          const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+          const addrScore = addressSimilarity(provider.city, azureData.city);
+          const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
+
           suggested.city = {
             oldValue: provider.city,
             suggestedValue: azureData.city,
-            confidence: 0.85,
-            sourceType: "AZURE_MAPS"
+            confidence,
+            sourceType: "AZURE_MAPS",
+            action: determineAction(confidence),
+            severity: determineSeverity(confidence)
           };
         }
       }
@@ -110,22 +157,33 @@ export async function runQualityAssurance(provider, runId) {
         const normalizedProviderState = normalizeText(provider.state);
         
         if (normalizedAzureState !== normalizedProviderState) {
+          const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+          const addrScore = addressSimilarity(provider.state, azureData.state);
+          const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
+
           suggested.state = {
             oldValue: provider.state,
             suggestedValue: azureData.state,
-            confidence: 0.9,
-            sourceType: "AZURE_MAPS"
+            confidence,
+            sourceType: "AZURE_MAPS",
+            action: determineAction(confidence),
+            severity: determineSeverity(confidence)
           };
         }
       }
 
       // Use Azure Maps score to flag low-confidence matches
       if (azureData.score && azureData.score < 0.6) {
+        const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+        const confidence = finalScore({ sourceScore: srcScore, addressScore: azureData.score, phoneScore: 0 });
+
         suggested.address_line1 = {
           oldValue: provider.address_line1 || '',
           suggestedValue: azureData.formattedAddress.split(',')[0] || azureData.formattedAddress,
-          confidence: 0.5,
-          sourceType: "AZURE_MAPS"
+          confidence,
+          sourceType: "AZURE_MAPS",
+          action: determineAction(confidence),
+          severity: determineSeverity(confidence)
         };
       }
     }
@@ -134,25 +192,37 @@ export async function runQualityAssurance(provider, runId) {
   // Check Azure POI (business) data
   const poiSource = sources.find(s => s.source_type === "AZURE_POI");
   if (poiSource && poiSource.raw_data && poiSource.raw_data.isFound) {
+    sourceMatches.azure = true;
     const poi = poiSource.raw_data;
 
     // Phone comparison
     if (poi.phone && normalizePhone(poi.phone) !== normalizePhone(provider.phone)) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.5, phoneScore: 0 });
+
       suggested.phone = {
         oldValue: provider.phone || '',
         suggestedValue: poi.phone,
-        confidence: 0.85,
-        sourceType: "AZURE_POI"
+        confidence,
+        sourceType: "AZURE_POI",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
       };
     }
 
     // Address comparisons
     if (poi.postalCode && provider.zip && poi.postalCode !== provider.zip) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+      const addrScore = addressSimilarity(provider.address_line1, poi.formattedAddress || '');
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
+
       suggested.zip = {
         oldValue: provider.zip,
         suggestedValue: poi.postalCode,
-        confidence: 0.9,
-        sourceType: "AZURE_POI"
+        confidence,
+        sourceType: "AZURE_POI",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
       };
     }
 
@@ -160,11 +230,17 @@ export async function runQualityAssurance(provider, runId) {
       const normalizedPoiCity = normalizeAddressComponent(poi.city);
       const normalizedProviderCity = normalizeAddressComponent(provider.city);
       if (normalizedPoiCity !== normalizedProviderCity) {
+        const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+        const addrScore = addressSimilarity(provider.city, poi.city);
+        const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
+
         suggested.city = {
           oldValue: provider.city,
           suggestedValue: poi.city,
-          confidence: 0.85,
-          sourceType: "AZURE_POI"
+          confidence,
+          sourceType: "AZURE_POI",
+          action: determineAction(confidence),
+          severity: determineSeverity(confidence)
         };
       }
     }
@@ -173,50 +249,128 @@ export async function runQualityAssurance(provider, runId) {
       const normalizedPoiState = normalizeText(poi.state);
       const normalizedProviderState = normalizeText(provider.state);
       if (normalizedPoiState !== normalizedProviderState) {
+        const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+        const addrScore = addressSimilarity(provider.state, poi.state);
+        const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
+
         suggested.state = {
           oldValue: provider.state,
           suggestedValue: poi.state,
-          confidence: 0.9,
-          sourceType: "AZURE_POI"
+          confidence,
+          sourceType: "AZURE_POI",
+          action: determineAction(confidence),
+          severity: determineSeverity(confidence)
         };
       }
     }
 
     // Website enrichment (if provider has no website field, leave oldValue empty)
     if (poi.website) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.5, phoneScore: 0 });
+
       suggested.website = {
         oldValue: provider.website || '',
         suggestedValue: poi.website,
-        confidence: 0.8,
-        sourceType: "AZURE_POI"
+        confidence,
+        sourceType: "AZURE_POI",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
       };
     }
-
   }
 
-  // Check scraping fallback data
-  const scrapingSource = sources.find(s => s.source_type === "SCRAPING_FALLBACK");
+  // Check scraping enrichment data
+  const scrapingSource = sources.find(s => s.source_type === "SCRAPING_ENRICHMENT");
   if (scrapingSource && scrapingSource.raw_data && scrapingSource.raw_data.isFound) {
+    sourceMatches.scrape = true;
     const scraped = scrapingSource.raw_data;
 
     // Phone comparison (only if not already suggested by other sources)
     if (scraped.phone && !suggested.phone && normalizePhone(scraped.phone) !== normalizePhone(provider.phone)) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.4, phoneScore: 0 });
+
       suggested.phone = {
         oldValue: provider.phone || '',
         suggestedValue: scraped.phone,
-        confidence: 0.7,
-        sourceType: "SCRAPING_FALLBACK"
+        confidence,
+        sourceType: "SCRAPING_ENRICHMENT",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
       };
     }
 
     // Website enrichment (only if not already suggested)
     if (scraped.website && !suggested.website) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.3, phoneScore: 0 });
+
       suggested.website = {
         oldValue: provider.website || '',
         suggestedValue: scraped.website,
-        confidence: 0.65,
-        sourceType: "SCRAPING_FALLBACK"
+        confidence,
+        sourceType: "SCRAPING_ENRICHMENT",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
       };
+    }
+  }
+
+  // Check PDF OCR data
+  const pdfSource = sources.find(s => s.source_type === "PDF_OCR");
+  if (pdfSource && pdfSource.raw_data) {
+    sourceMatches.pdf = true;
+    const pdfData = pdfSource.raw_data;
+
+    // Compare extracted name (if present)
+    if (pdfData.name && pdfData.name !== provider.name) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: false, pdf: true });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.3, phoneScore: 0 });
+
+      suggested.name = {
+        oldValue: provider.name || '',
+        suggestedValue: pdfData.name,
+        confidence,
+        sourceType: "PDF_OCR",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+
+    // Compare extracted phone (if present)
+    if (pdfData.phone && normalizePhone(pdfData.phone) !== normalizePhone(provider.phone)) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: false, pdf: true });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.2, phoneScore: 0 });
+
+      if (!suggested.phone) {
+        suggested.phone = {
+          oldValue: provider.phone || '',
+          suggestedValue: pdfData.phone,
+          confidence,
+          sourceType: "PDF_OCR",
+          action: determineAction(confidence),
+          severity: determineSeverity(confidence)
+        };
+      }
+    }
+
+    // Compare extracted address (if present)
+    if (pdfData.address && pdfData.address !== provider.address_line1) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: false, pdf: true });
+      const addrScore = addressSimilarity(provider.address_line1, pdfData.address);
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
+
+      if (!suggested.address_line1) {
+        suggested.address_line1 = {
+          oldValue: provider.address_line1 || '',
+          suggestedValue: pdfData.address,
+          confidence,
+          sourceType: "PDF_OCR",
+          action: determineAction(confidence),
+          severity: determineSeverity(confidence)
+        };
+      }
     }
   }
 
@@ -228,7 +382,8 @@ export async function runQualityAssurance(provider, runId) {
     old_value: s.oldValue,
     suggested_value: s.suggestedValue,
     confidence: s.confidence,
-    severity: s.confidence > 0.9 ? "HIGH" : s.confidence > 0.7 ? "MEDIUM" : "LOW",
+    severity: s.severity,
+    action: s.action,
     source_type: s.sourceType || "UNKNOWN",
     status: "OPEN"
   }));
@@ -239,7 +394,6 @@ export async function runQualityAssurance(provider, runId) {
     const { data: inserted, error: insertErr } = await supabase.from("validation_issues").insert(issueRows);
     if (insertErr) {
       console.error("Failed to insert validation issues for provider", provider.id, insertErr.message || insertErr);
-      // If insert failed, do not mark as needs review (keeps counts consistent)
       return { needsReview: false };
     }
 
