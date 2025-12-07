@@ -31,6 +31,7 @@ async function load() {
 
     const rows = [
       ['Name', p.name],
+      ['NPI', p.npi_id],
       ['Phone', p.phone],
       ['Email', p.email],
       ['Address', p.address_line1],
@@ -70,7 +71,6 @@ async function load() {
         const statusBadgeClass = it.status === 'ACCEPTED' ? 'bg-success' : it.status === 'REJECTED' ? 'bg-secondary' : 'bg-warning text-dark';
         
         tr.innerHTML = `
-          <td><code>${escapeHtml(it.id)}</code></td>
           <td><strong>${escapeHtml(it.field_name)}</strong></td>
           <td>${escapeHtml(it.old_value)}</td>
           <td><span class="badge bg-info">${escapeHtml(it.suggested_value)}</span></td>

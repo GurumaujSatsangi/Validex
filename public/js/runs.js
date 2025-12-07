@@ -155,7 +155,6 @@ document.addEventListener('click', async (ev) => {
         <table class="table table-sm table-striped" id="issuesModalTable">
           <thead class="table-light">
             <tr>
-              <th>ID</th>
               <th>Provider</th>
               <th>Field</th>
               <th>Current</th>
@@ -177,7 +176,6 @@ document.addEventListener('click', async (ev) => {
       
       html += `
         <tr data-issue-id="${escapeHtml(it.id)}">
-          <td><code>${escapeHtml(it.id)}</code></td>
           <td><a href="/provider/${it.provider_id}" target="_blank" class="text-decoration-none">${providerName}</a></td>
           <td><strong>${escapeHtml(it.field_name)}</strong></td>
           <td>${escapeHtml(it.old_value)}</td>
