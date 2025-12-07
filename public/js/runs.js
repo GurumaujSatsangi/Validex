@@ -209,6 +209,9 @@ document.addEventListener('click', async (ev) => {
       return;
     }
 
+    const openIssues = issues.filter(i => i.status === 'OPEN').length;
+    const hasOpen = openIssues > 0;
+
     // Build Bootstrap-styled HTML table
     let html = `
       <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
@@ -220,6 +223,18 @@ document.addEventListener('click', async (ev) => {
           .issues-table .btn-sm { padding: 3px 6px; font-size: 0.7rem; }
           .issues-table a { font-size: 0.8rem; }
         </style>
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <button id="acceptAllIssues" class="btn btn-success btn-sm" ${hasOpen ? '' : 'disabled'}>
+            <i class="bi bi-check-circle"></i> Accept All
+          </button>
+          <button id="rejectAllIssues" class="btn btn-outline-danger btn-sm" ${hasOpen ? '' : 'disabled'}>
+            <i class="bi bi-x-circle"></i> Reject All
+          </button>
+          <button id="downloadValidatedCsv" class="btn btn-primary btn-sm" ${hasOpen ? 'disabled' : ''}>
+            <i class="bi bi-download"></i> Download Validated CSV
+          </button>
+          <small id="issuesHint" class="text-muted">${hasOpen ? 'Resolve all issues to enable download.' : 'All issues closed. You can download the validated CSV.'}</small>
+        </div>
         <table class="table table-sm table-striped issues-table" id="issuesModalTable">
           <thead class="table-light">
             <tr>
@@ -280,6 +295,34 @@ document.addEventListener('click', async (ev) => {
       didOpen: () => {
         // Allow scrolling inside the modal
         Swal.getHtmlContainer().style.overflowY = 'auto';
+
+        const runHasOpenIssues = () => {
+          const rows = Array.from(document.querySelectorAll('#issuesModalTable tbody tr'));
+          return rows.some(r => r.querySelector('td:nth-child(8) .badge')?.textContent === 'OPEN');
+        };
+
+        const refreshBulkButtons = () => {
+          const hasOpen = runHasOpenIssues();
+          const acceptAllBtn = document.getElementById('acceptAllIssues');
+          const rejectAllBtn = document.getElementById('rejectAllIssues');
+          const downloadBtn = document.getElementById('downloadValidatedCsv');
+          const hint = document.getElementById('issuesHint');
+
+          if (acceptAllBtn) acceptAllBtn.disabled = !hasOpen;
+          if (rejectAllBtn) rejectAllBtn.disabled = !hasOpen;
+          if (downloadBtn) downloadBtn.disabled = hasOpen;
+          if (hint) hint.textContent = hasOpen ? 'Resolve all issues to enable download.' : 'All issues closed. You can download the validated CSV.';
+        };
+
+        const markRowClosed = (row, statusText) => {
+          const statusBadge = row.querySelector('td:nth-child(8) .badge');
+          if (statusBadge) {
+            statusBadge.className = statusText === 'ACCEPTED' ? 'badge bg-success' : 'badge bg-secondary';
+            statusBadge.textContent = statusText;
+          }
+          const actionCell = row.querySelector('.action-cell');
+          if (actionCell) actionCell.innerHTML = '<span class="text-muted">Closed</span>';
+        };
         
         // Add event listeners for Accept/Reject buttons in modal
         document.querySelectorAll('.accept-modal-issue').forEach(btn => {
@@ -299,11 +342,8 @@ document.addEventListener('click', async (ev) => {
               
               // Update the row in the modal
               const row = document.querySelector(`tr[data-issue-id="${issueId}"]`);
-              if (row) {
-                row.querySelector('td:nth-child(8) .badge').className = 'badge bg-success';
-                row.querySelector('td:nth-child(8) .badge').textContent = 'ACCEPTED';
-                row.querySelector('.action-cell').innerHTML = '<span class="text-muted">Closed</span>';
-              }
+              if (row) markRowClosed(row, 'ACCEPTED');
+              refreshBulkButtons();
             } catch (err) {
               alert('Error: ' + err.message);
               e.currentTarget.disabled = false;
@@ -327,17 +367,68 @@ document.addEventListener('click', async (ev) => {
               
               // Update the row in the modal
               const row = document.querySelector(`tr[data-issue-id="${issueId}"]`);
-              if (row) {
-                row.querySelector('td:nth-child(8) .badge').className = 'badge bg-secondary';
-                row.querySelector('td:nth-child(8) .badge').textContent = 'REJECTED';
-                row.querySelector('.action-cell').innerHTML = '<span class="text-muted">Closed</span>';
-              }
+              if (row) markRowClosed(row, 'REJECTED');
+              refreshBulkButtons();
             } catch (err) {
               alert('Error: ' + err.message);
               e.currentTarget.disabled = false;
             }
           });
         });
+
+        // Bulk accept all open issues
+        document.getElementById('acceptAllIssues')?.addEventListener('click', async () => {
+          const btn = document.getElementById('acceptAllIssues');
+          if (btn) btn.disabled = true;
+          try {
+            const res = await fetch(`/api/issues/run/${runId}/accept-all`, { method: 'POST' });
+            if (!res.ok) {
+              const json = await res.json();
+              alert('Failed to accept all: ' + (json?.error || 'Unknown error'));
+              if (btn) btn.disabled = false;
+              return;
+            }
+
+            document.querySelectorAll('#issuesModalTable tbody tr').forEach(row => markRowClosed(row, 'ACCEPTED'));
+            refreshBulkButtons();
+          } catch (err) {
+            alert('Error: ' + err.message);
+            if (btn) btn.disabled = false;
+          }
+        });
+
+        // Bulk reject all open issues
+        document.getElementById('rejectAllIssues')?.addEventListener('click', async () => {
+          const btn = document.getElementById('rejectAllIssues');
+          if (btn) btn.disabled = true;
+          try {
+            const res = await fetch(`/api/issues/run/${runId}/reject-all`, { method: 'POST' });
+            if (!res.ok) {
+              const json = await res.json();
+              alert('Failed to reject all: ' + (json?.error || 'Unknown error'));
+              if (btn) btn.disabled = false;
+              return;
+            }
+
+            document.querySelectorAll('#issuesModalTable tbody tr').forEach(row => markRowClosed(row, 'REJECTED'));
+            refreshBulkButtons();
+          } catch (err) {
+            alert('Error: ' + err.message);
+            if (btn) btn.disabled = false;
+          }
+        });
+
+        // Download validated CSV (enabled only when all issues are closed)
+        document.getElementById('downloadValidatedCsv')?.addEventListener('click', () => {
+          if (runHasOpenIssues()) {
+            alert('Resolve all issues before downloading.');
+            return;
+          }
+          window.location.href = `/api/validation-runs/${runId}/export`;
+        });
+
+        // Initial state
+        refreshBulkButtons();
       }
     });
   } catch (err) {

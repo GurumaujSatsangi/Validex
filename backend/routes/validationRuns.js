@@ -107,4 +107,52 @@ router.get('/:id/issues', async (req, res) => {
   res.json({ issues: data });
 });
 
+// GET /api/validation-runs/:id/export - export providers for a run once all issues are closed
+router.get('/:id/export', async (req, res) => {
+  const runId = req.params.id;
+
+  // Ensure no open issues remain
+  const { count: openCount, error: openErr } = await supabase
+    .from('validation_issues')
+    .select('id', { count: 'exact', head: true })
+    .eq('run_id', runId)
+    .eq('status', 'OPEN');
+
+  if (openErr) return res.status(500).json({ error: 'Failed to check issue status' });
+  if ((openCount ?? 0) > 0) {
+    return res.status(400).json({ error: 'Issues still open. Resolve all issues before exporting.' });
+  }
+
+  // Get providers involved in this run (from issues)
+  const { data: issueProviders, error: providerErr } = await supabase
+    .from('validation_issues')
+    .select('provider_id')
+    .eq('run_id', runId);
+
+  if (providerErr) return res.status(500).json({ error: 'Failed to gather providers for export' });
+
+  const providerIds = [...new Set((issueProviders || []).map(p => p.provider_id))];
+
+  if (providerIds.length === 0) {
+    return res.status(400).json({ error: 'No providers associated with this run' });
+  }
+
+  const { data: providers, error: loadErr } = await supabase
+    .from('providers')
+    .select('*')
+    .in('id', providerIds);
+
+  if (loadErr) return res.status(500).json({ error: 'Export failed' });
+
+  let csv = 'name,phone,email,address_line1,city,state,zip,speciality,license_number\n';
+
+  providers.forEach(p => {
+    csv += `"${p.name || ''}","${p.phone || ''}","${p.email || ''}","${p.address_line1 || ''}","${p.city || ''}","${p.state || ''}","${p.zip || ''}","${p.speciality || ''}","${p.license_number || ''}"\n`;
+  });
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename=validated_run_${runId}.csv`);
+  res.send(csv);
+});
+
 export default router;

@@ -27,42 +27,25 @@ export async function runInfoEnrichment(provider) {
   }
 
   // ===============================================
-  // STEP 2: FALLBACK WEB SCRAPING (if Azure POI failed)
+  // STEP 2: WEB SCRAPING (run for all providers to collect richer info)
   // ===============================================
   let scrapedData = null;
 
-  if (!poiFound) {
-    console.info("[Info Enrichment] Azure POI not found for provider", provider.id, "- attempting web scraping fallback");
-    
-    scrapedData = await scrapeProviderInfo(provider);
+  console.info("[Info Enrichment] Running web scraping for provider", provider.id);
+  scrapedData = await scrapeProviderInfo(provider);
 
-    if (scrapedData && scrapedData.isFound) {
-      try {
-        const { error } = await supabase.from("provider_sources").insert({
-          provider_id: provider.id,
-          source_type: "SCRAPING_FALLBACK",
-          raw_data: scrapedData
-        });
-        if (error) {
-          console.error("Failed to insert SCRAPING_FALLBACK provider_sources for", provider.id, error.message || error);
-        }
-      } catch (err) {
-        console.error("Unexpected error inserting SCRAPING_FALLBACK provider_sources", err);
+  if (scrapedData) {
+    try {
+      const { error } = await supabase.from("provider_sources").insert({
+        provider_id: provider.id,
+        source_type: "SCRAPING_ENRICHMENT",
+        raw_data: scrapedData
+      });
+      if (error) {
+        console.error("Failed to insert SCRAPING_ENRICHMENT provider_sources for", provider.id, error.message || error);
       }
-    } else {
-      // Insert not-found record for scraping attempt
-      try {
-        const { error } = await supabase.from("provider_sources").insert({
-          provider_id: provider.id,
-          source_type: "SCRAPING_FALLBACK",
-          raw_data: { isFound: false, sources: [] }
-        });
-        if (error) {
-          console.error("Failed to insert SCRAPING_FALLBACK not-found for", provider.id, error.message || error);
-        }
-      } catch (err) {
-        console.error("Unexpected error inserting SCRAPING_FALLBACK not-found", err);
-      }
+    } catch (err) {
+      console.error("Unexpected error inserting SCRAPING_ENRICHMENT provider_sources", err);
     }
   }
 
