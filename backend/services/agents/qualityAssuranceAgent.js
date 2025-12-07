@@ -1,4 +1,5 @@
 import { supabase } from "../../supabaseClient.js";
+import { normalizeAddressComponent, normalizeText } from "../tools/addressUtils.js";
 
 /**
  * Normalize specialty text for comparison by:
@@ -35,26 +36,150 @@ export async function runQualityAssurance(provider, runId) {
 
   if (!sources || sources.length === 0) return { needsReview: false };
 
-  const npiSource = sources.find(s => s.source_type === "NPI_API");
-  if (!npiSource) return { needsReview: false };
-
   const suggested = {};
-  const npiPhone = npiSource.raw_data.phone;
-  if (npiPhone && normalizePhone(npiPhone) !== normalizePhone(provider.phone)) {
-    suggested.phone = {
-      oldValue: provider.phone,
-      suggestedValue: npiPhone,
-      confidence: 0.9
-    };
+
+  // Check NPI data
+  const npiSource = sources.find(s => s.source_type === "NPI_API");
+  if (npiSource) {
+    const npiPhone = npiSource.raw_data.phone;
+    if (npiPhone && normalizePhone(npiPhone) !== normalizePhone(provider.phone)) {
+      suggested.phone = {
+        oldValue: provider.phone,
+        suggestedValue: npiPhone,
+        confidence: 0.9
+      };
+    }
+
+    const npiSpec = npiSource.raw_data.speciality;
+    if (npiSpec && normalizeSpecialty(npiSpec) !== normalizeSpecialty(provider.speciality)) {
+      suggested.speciality = {
+        oldValue: provider.speciality,
+        suggestedValue: npiSpec,
+        confidence: 0.85
+      };
+    }
   }
 
-  const npiSpec = npiSource.raw_data.speciality;
-  if (npiSpec && normalizeSpecialty(npiSpec) !== normalizeSpecialty(provider.speciality)) {
-    suggested.speciality = {
-      oldValue: provider.speciality,
-      suggestedValue: npiSpec,
-      confidence: 0.85
-    };
+  // Check Azure Maps address validation
+  const azureSource = sources.find(s => s.source_type === "AZURE_MAPS");
+  if (azureSource && azureSource.raw_data) {
+    const azureData = azureSource.raw_data;
+
+    // If address was not found (NO_RESULTS), create a low-confidence issue
+    if (!azureData.isValid && azureData.reason === "NO_RESULTS") {
+      suggested.address_line1 = {
+        oldValue: provider.address_line1 || '',
+        suggestedValue: "Address not found - please verify",
+        confidence: 0.3
+      };
+    }
+
+    // If address was found, compare components
+    if (azureData.isValid && azureData.formattedAddress) {
+      // Compare ZIP code
+      if (azureData.postalCode && provider.zip && azureData.postalCode !== provider.zip) {
+        suggested.zip = {
+          oldValue: provider.zip,
+          suggestedValue: azureData.postalCode,
+          confidence: 0.9
+        };
+      }
+
+      // Compare city (normalized)
+      if (azureData.city && provider.city) {
+        const normalizedAzureCity = normalizeAddressComponent(azureData.city);
+        const normalizedProviderCity = normalizeAddressComponent(provider.city);
+        
+        if (normalizedAzureCity !== normalizedProviderCity) {
+          suggested.city = {
+            oldValue: provider.city,
+            suggestedValue: azureData.city,
+            confidence: 0.85
+          };
+        }
+      }
+
+      // Compare state
+      if (azureData.state && provider.state) {
+        const normalizedAzureState = normalizeText(azureData.state);
+        const normalizedProviderState = normalizeText(provider.state);
+        
+        if (normalizedAzureState !== normalizedProviderState) {
+          suggested.state = {
+            oldValue: provider.state,
+            suggestedValue: azureData.state,
+            confidence: 0.9
+          };
+        }
+      }
+
+      // Use Azure Maps score to flag low-confidence matches
+      if (azureData.score && azureData.score < 0.6) {
+        suggested.address_line1 = {
+          oldValue: provider.address_line1 || '',
+          suggestedValue: azureData.formattedAddress.split(',')[0] || azureData.formattedAddress,
+          confidence: 0.5
+        };
+      }
+    }
+  }
+
+  // Check Azure POI (business) data
+  const poiSource = sources.find(s => s.source_type === "AZURE_POI");
+  if (poiSource && poiSource.raw_data && poiSource.raw_data.isFound) {
+    const poi = poiSource.raw_data;
+
+    // Phone comparison
+    if (poi.phone && normalizePhone(poi.phone) !== normalizePhone(provider.phone)) {
+      suggested.phone = {
+        oldValue: provider.phone || '',
+        suggestedValue: poi.phone,
+        confidence: 0.85
+      };
+    }
+
+    // Address comparisons
+    if (poi.postalCode && provider.zip && poi.postalCode !== provider.zip) {
+      suggested.zip = {
+        oldValue: provider.zip,
+        suggestedValue: poi.postalCode,
+        confidence: 0.9
+      };
+    }
+
+    if (poi.city && provider.city) {
+      const normalizedPoiCity = normalizeAddressComponent(poi.city);
+      const normalizedProviderCity = normalizeAddressComponent(provider.city);
+      if (normalizedPoiCity !== normalizedProviderCity) {
+        suggested.city = {
+          oldValue: provider.city,
+          suggestedValue: poi.city,
+          confidence: 0.85
+        };
+      }
+    }
+
+    if (poi.state && provider.state) {
+      const normalizedPoiState = normalizeText(poi.state);
+      const normalizedProviderState = normalizeText(provider.state);
+      if (normalizedPoiState !== normalizedProviderState) {
+        suggested.state = {
+          oldValue: provider.state,
+          suggestedValue: poi.state,
+          confidence: 0.9
+        };
+      }
+    }
+
+    // Website enrichment (if provider has no website field, leave oldValue empty)
+    if (poi.website) {
+      suggested.website = {
+        oldValue: provider.website || '',
+        suggestedValue: poi.website,
+        confidence: 0.8
+      };
+    }
+
   }
 
   // Prepare issue rows for bulk insert
@@ -65,7 +190,7 @@ export async function runQualityAssurance(provider, runId) {
     old_value: s.oldValue,
     suggested_value: s.suggestedValue,
     confidence: s.confidence,
-    severity: s.confidence > 0.9 ? "HIGH" : "MEDIUM",
+    severity: s.confidence > 0.9 ? "HIGH" : s.confidence > 0.7 ? "MEDIUM" : "LOW",
     status: "OPEN"
   }));
 

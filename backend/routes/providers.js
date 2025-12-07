@@ -47,4 +47,46 @@ router.get("/:id/issues", async (req, res) => {
   res.json({ issues: data });
 });
 
+// DELETE /api/providers/:id - remove provider and related data
+router.delete('/:id', async (req, res) => {
+  const providerId = req.params.id;
+
+  try {
+    const { error: issuesErr } = await supabase
+      .from('validation_issues')
+      .delete()
+      .eq('provider_id', providerId);
+
+    if (issuesErr) {
+      console.error('Failed to delete validation issues for provider', providerId, issuesErr.message || issuesErr);
+      return res.status(500).json({ error: 'Could not delete provider issues' });
+    }
+
+    const { error: sourcesErr } = await supabase
+      .from('provider_sources')
+      .delete()
+      .eq('provider_id', providerId);
+
+    if (sourcesErr) {
+      console.error('Failed to delete provider sources', providerId, sourcesErr.message || sourcesErr);
+      return res.status(500).json({ error: 'Could not delete provider sources' });
+    }
+
+    const { error: providerErr } = await supabase
+      .from('providers')
+      .delete()
+      .eq('id', providerId);
+
+    if (providerErr) {
+      console.error('Failed to delete provider', providerId, providerErr.message || providerErr);
+      return res.status(500).json({ error: 'Could not delete provider' });
+    }
+
+    res.status(204).send();
+  } catch (err) {
+    console.error('Unexpected error deleting provider', providerId, err);
+    res.status(500).json({ error: 'Unexpected error deleting provider' });
+  }
+});
+
 export default router;

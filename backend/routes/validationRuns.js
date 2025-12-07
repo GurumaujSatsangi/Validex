@@ -62,6 +62,38 @@ router.post("/", async (req, res) => {
   res.json({ runId });
 });
 
+// DELETE /api/validation-runs/:id - remove a run and its issues
+router.delete('/:id', async (req, res) => {
+  const runId = req.params.id;
+
+  try {
+    const { error: issuesErr } = await supabase
+      .from('validation_issues')
+      .delete()
+      .eq('run_id', runId);
+
+    if (issuesErr) {
+      console.error('Failed to delete validation issues for run', runId, issuesErr.message || issuesErr);
+      return res.status(500).json({ error: 'Could not delete run issues' });
+    }
+
+    const { error: runErr } = await supabase
+      .from('validation_runs')
+      .delete()
+      .eq('id', runId);
+
+    if (runErr) {
+      console.error('Failed to delete validation run', runId, runErr.message || runErr);
+      return res.status(500).json({ error: 'Could not delete run' });
+    }
+
+    res.status(204).send();
+  } catch (err) {
+    console.error('Unexpected error deleting validation run', runId, err);
+    res.status(500).json({ error: 'Unexpected error deleting run' });
+  }
+});
+
 // GET /api/validation-runs/:id/issues - return issues associated with a run
 router.get('/:id/issues', async (req, res) => {
   const runId = req.params.id;

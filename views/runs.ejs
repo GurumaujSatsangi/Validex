@@ -66,11 +66,14 @@
                       <td><span class="badge bg-warning text-dark"><%= r.needs_review_count ?? '—' %></span></td>
                       <td><%= r.completed_at ? new Date(r.completed_at).toLocaleString() : '—' %></td>
                       <td>
-                        <% if (r.needs_review_count > 0) { %>
-                          <button class="btn btn-sm btn-info view-issues-btn" data-run-id="<%= r.id %>"><i class="bi bi-eye"></i> View Issues</button>
-                        <% } else { %>
-                          <span class="text-muted">No issues</span>
-                        <% } %>
+                        <div class="d-flex gap-2">
+                          <% if (r.needs_review_count > 0) { %>
+                            <button class="btn btn-sm btn-info view-issues-btn" data-run-id="<%= r.id %>"><i class="bi bi-eye"></i> View Issues</button>
+                          <% } else { %>
+                            <span class="text-muted">No issues</span>
+                          <% } %>
+                          <button class="btn btn-sm btn-outline-danger delete-run-btn" data-run-id="<%= r.id %>"><i class="bi bi-trash"></i> Delete</button>
+                        </div>
                       </td>
                     </tr>
                   <% }) %>

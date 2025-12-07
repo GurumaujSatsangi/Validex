@@ -26,7 +26,10 @@ async function loadRuns(){
         <td><span class="badge bg-warning text-dark">${r.needs_review_count ?? '—'}</span></td>
         <td>${r.completed_at ? escapeHtml(new Date(r.completed_at).toLocaleString()) : '—'}</td>
         <td>
-          ${r.needs_review_count > 0 ? `<button class="btn btn-sm btn-info view-issues-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-eye"></i> View Issues</button>` : '<span class="text-muted">No issues</span>'}
+          <div class="d-flex gap-2">
+            ${r.needs_review_count > 0 ? `<button class="btn btn-sm btn-info view-issues-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-eye"></i> View Issues</button>` : '<span class="text-muted">No issues</span>'}
+            <button class="btn btn-sm btn-outline-danger delete-run-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-trash"></i> Delete</button>
+          </div>
         </td>
       </tr>`).join('');
 
@@ -37,8 +40,15 @@ async function loadRuns(){
   }
 }
 
+let isStartingRun = false;
+
 document.getElementById('startRun')?.addEventListener('click', async () => {
+  if (isStartingRun) return; // prevent accidental double triggers
   try {
+    isStartingRun = true;
+    const startBtn = document.getElementById('startRun');
+    if (startBtn) startBtn.disabled = true;
+
     Swal.fire({
       title: 'Starting Validation Run',
       html: '<p>Please wait — validating providers...</p>',
@@ -55,6 +65,8 @@ document.getElementById('startRun')?.addEventListener('click', async () => {
 
     if (!res.ok) {
       Swal.fire({ icon: 'error', title: 'Run Failed', text: json?.error || 'Unknown error' });
+      if (startBtn) startBtn.disabled = false;
+      isStartingRun = false;
       return;
     }
 
@@ -69,6 +81,10 @@ document.getElementById('startRun')?.addEventListener('click', async () => {
   } catch (err) {
     Swal.close();
     Swal.fire({ icon: 'error', title: 'Error', text: err?.message || String(err) });
+  } finally {
+    isStartingRun = false;
+    const startBtn = document.getElementById('startRun');
+    if (startBtn) startBtn.disabled = false;
   }
 });
 
@@ -83,6 +99,35 @@ function escapeHtml(text) {
 
 // Handle clicking View Issues for a run using event delegation
 document.addEventListener('click', async (ev) => {
+  const deleteBtn = ev.target.closest('.delete-run-btn');
+  if (deleteBtn) {
+    const runId = deleteBtn.dataset.runId;
+    const confirmed = await Swal.fire({
+      icon: 'warning',
+      title: 'Delete this run?',
+      text: 'This will remove the run and its issues.',
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel'
+    });
+
+    if (!confirmed.isConfirmed) return;
+
+    try {
+      const res = await fetch(`/api/validation-runs/${runId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const json = await res.json();
+        Swal.fire('Error', json?.error || 'Could not delete run', 'error');
+        return;
+      }
+      await loadRuns();
+      Swal.fire('Deleted', 'Validation run removed', 'success');
+    } catch (err) {
+      Swal.fire('Error', err?.message || String(err), 'error');
+    }
+    return;
+  }
+
   const btn = ev.target.closest('.view-issues-btn');
   if (!btn) return;
   

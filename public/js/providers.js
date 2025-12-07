@@ -19,7 +19,12 @@ async function loadProviders(){
           <td>${escapeHtml(p.city || '')}</td>
           <td>${escapeHtml(p.state || '')}</td>
           <td><span class="badge bg-secondary">${p.issues_count ?? 0}</span></td>
-          <td><button class="btn btn-sm btn-info view-provider-btn" data-id="${p.id}"><i class="bi bi-eye"></i> View</button></td>
+          <td>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-info view-provider-btn" data-id="${p.id}"><i class="bi bi-eye"></i> View</button>
+              <button class="btn btn-sm btn-outline-danger delete-provider-btn" data-id="${p.id}"><i class="bi bi-trash"></i> Delete</button>
+            </div>
+          </td>
         </tr>`;
     }).join('');
 
@@ -66,4 +71,25 @@ document.addEventListener('click', (ev) => {
   if (!btn) return;
   const id = btn.dataset.id;
   window.location.href = `/provider/${id}`;
+});
+
+// Delegate delete buttons
+document.addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('.delete-provider-btn');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const confirmed = window.confirm('Delete this provider and its validation data?');
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/providers/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const json = await res.json();
+      alert(json?.error || 'Failed to delete provider');
+      return;
+    }
+    await loadProviders();
+  } catch (err) {
+    alert(err?.message || String(err));
+  }
 });

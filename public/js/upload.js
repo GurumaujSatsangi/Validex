@@ -38,7 +38,11 @@ document.getElementById('uploadForm')?.addEventListener('submit', async (e) => {
       title: 'Import Successful!',
       html: `<p><strong>${json.imported}</strong> providers imported successfully.</p>`,
       confirmButtonColor: '#ffe600',
-      confirmButtonText: 'OK'
+      confirmButtonText: 'View Providers'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        window.location.href = '/providers';
+      }
     });
 
     form.reset();
