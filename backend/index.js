@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import uploadRoutes from "./routes/upload.js";
+import uploadPdfRoutes from "./routes/uploadPdf.js";
 import providerRoutes from "./routes/providers.js";
 import validationRunRoutes from "./routes/validationRuns.js";
 import issueRoutes from "./routes/issues.js";
@@ -28,6 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "../public")));
 
 app.use("/api/upload", uploadRoutes);
+app.use("/api/upload", uploadPdfRoutes);
 app.use("/api/providers", providerRoutes);
 app.use("/api/validation-runs", validationRunRoutes);
 app.use("/api/issues", issueRoutes);
