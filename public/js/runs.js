@@ -49,17 +49,77 @@ document.getElementById('startRun')?.addEventListener('click', async () => {
     const startBtn = document.getElementById('startRun');
     if (startBtn) startBtn.disabled = true;
 
+    const startTime = Date.now();
+    let pollInterval;
+
     Swal.fire({
-      title: 'Starting Validation Run',
-      html: '<p>Please wait — validating providers...</p>',
+      title: 'Running Validation',
+      html: `
+        <div class="mb-3">
+          <div class="progress" style="height: 25px;">
+            <div id="validation-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+          </div>
+        </div>
+        <p id="validation-status" class="text-muted">Initializing validation...</p>
+        <p id="validation-eta" class="text-muted small">Estimated time remaining: calculating...</p>
+      `,
       allowOutsideClick: false,
+      showConfirmButton: false,
       didOpen: () => {
-        Swal.showLoading();
+        // Poll for progress updates
+        pollInterval = setInterval(async () => {
+          try {
+            const progressRes = await fetch('/api/validation-runs');
+            const progressJson = await progressRes.json();
+            if (progressJson.runs && progressJson.runs.length > 0) {
+              const latestRun = progressJson.runs[0];
+              const progress = latestRun.total_providers > 0 ? Math.round((latestRun.processed / latestRun.total_providers) * 100) : 0;
+              
+              const progressBar = document.getElementById('validation-progress-bar');
+              const statusText = document.getElementById('validation-status');
+              const etaText = document.getElementById('validation-eta');
+              
+              if (progressBar) {
+                progressBar.style.width = progress + '%';
+                progressBar.setAttribute('aria-valuenow', progress);
+                progressBar.textContent = progress + '%';
+              }
+              
+              if (statusText) {
+                statusText.textContent = `Processing: ${latestRun.processed || 0} of ${latestRun.total_providers || 0} providers`;
+              }
+              
+              // Calculate ETA
+              if (etaText && latestRun.processed > 0) {
+                const elapsed = Date.now() - startTime;
+                const avgTimePerProvider = elapsed / latestRun.processed;
+                const remaining = latestRun.total_providers - latestRun.processed;
+                const etaMs = remaining * avgTimePerProvider;
+                const etaSeconds = Math.ceil(etaMs / 1000);
+                const etaMinutes = Math.floor(etaSeconds / 60);
+                const etaSecondsRemainder = etaSeconds % 60;
+                
+                if (etaMinutes > 0) {
+                  etaText.textContent = `Estimated time remaining: ${etaMinutes}m ${etaSecondsRemainder}s`;
+                } else {
+                  etaText.textContent = `Estimated time remaining: ${etaSeconds}s`;
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Progress poll error:', err);
+          }
+        }, 1000); // Poll every second
+      },
+      willClose: () => {
+        if (pollInterval) clearInterval(pollInterval);
       }
     });
 
     const res = await fetch('/api/validation-runs', { method: 'POST' });
     const json = await res.json();
+    
+    if (pollInterval) clearInterval(pollInterval);
 
     Swal.close();
 
@@ -159,6 +219,7 @@ document.addEventListener('click', async (ev) => {
               <th>Field</th>
               <th>Current</th>
               <th>Suggested</th>
+              <th>Source</th>
               <th>Confidence</th>
               <th>Severity</th>
               <th>Status</th>
@@ -173,6 +234,7 @@ document.addEventListener('click', async (ev) => {
       const confidence = ((it.confidence || 0) * 100).toFixed(0);
       const isOpen = it.status === 'OPEN';
       const statusBadgeClass = it.status === 'ACCEPTED' ? 'bg-success' : it.status === 'REJECTED' ? 'bg-secondary' : 'bg-warning text-dark';
+      const sourceType = it.source_type || 'UNKNOWN';
       
       html += `
         <tr data-issue-id="${escapeHtml(it.id)}">
@@ -180,6 +242,7 @@ document.addEventListener('click', async (ev) => {
           <td><strong>${escapeHtml(it.field_name)}</strong></td>
           <td>${escapeHtml(it.old_value)}</td>
           <td><span class="badge bg-info">${escapeHtml(it.suggested_value)}</span></td>
+          <td><span class="badge ${sourceType === 'NPI_API' ? 'bg-primary' : sourceType === 'AZURE_POI' ? 'bg-info' : sourceType === 'AZURE_MAPS' ? 'bg-cyan' : sourceType === 'SCRAPING_FALLBACK' ? 'bg-warning' : 'bg-secondary'}">${escapeHtml(it.source_type || 'UNKNOWN')}</span></td>
           <td><span class="badge bg-secondary">${confidence}%</span></td>
           <td><span class="badge bg-danger">${escapeHtml(it.severity)}</span></td>
           <td><span class="badge ${statusBadgeClass}">${escapeHtml(it.status)}</span></td>

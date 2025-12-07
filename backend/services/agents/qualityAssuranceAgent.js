@@ -40,13 +40,14 @@ export async function runQualityAssurance(provider, runId) {
 
   // Check NPI data
   const npiSource = sources.find(s => s.source_type === "NPI_API");
-  if (npiSource) {
+  if (npiSource && npiSource.raw_data && npiSource.raw_data.isFound) {
     const npiPhone = npiSource.raw_data.phone;
     if (npiPhone && normalizePhone(npiPhone) !== normalizePhone(provider.phone)) {
       suggested.phone = {
         oldValue: provider.phone,
         suggestedValue: npiPhone,
-        confidence: 0.9
+        confidence: 0.9,
+        sourceType: "NPI_API"
       };
     }
 
@@ -55,7 +56,8 @@ export async function runQualityAssurance(provider, runId) {
       suggested.speciality = {
         oldValue: provider.speciality,
         suggestedValue: npiSpec,
-        confidence: 0.85
+        confidence: 0.85,
+        sourceType: "NPI_API"
       };
     }
   }
@@ -70,7 +72,8 @@ export async function runQualityAssurance(provider, runId) {
       suggested.address_line1 = {
         oldValue: provider.address_line1 || '',
         suggestedValue: "Address not found - please verify",
-        confidence: 0.3
+        confidence: 0.3,
+        sourceType: "AZURE_MAPS"
       };
     }
 
@@ -81,7 +84,8 @@ export async function runQualityAssurance(provider, runId) {
         suggested.zip = {
           oldValue: provider.zip,
           suggestedValue: azureData.postalCode,
-          confidence: 0.9
+          confidence: 0.9,
+          sourceType: "AZURE_MAPS"
         };
       }
 
@@ -94,7 +98,8 @@ export async function runQualityAssurance(provider, runId) {
           suggested.city = {
             oldValue: provider.city,
             suggestedValue: azureData.city,
-            confidence: 0.85
+            confidence: 0.85,
+            sourceType: "AZURE_MAPS"
           };
         }
       }
@@ -108,7 +113,8 @@ export async function runQualityAssurance(provider, runId) {
           suggested.state = {
             oldValue: provider.state,
             suggestedValue: azureData.state,
-            confidence: 0.9
+            confidence: 0.9,
+            sourceType: "AZURE_MAPS"
           };
         }
       }
@@ -118,7 +124,8 @@ export async function runQualityAssurance(provider, runId) {
         suggested.address_line1 = {
           oldValue: provider.address_line1 || '',
           suggestedValue: azureData.formattedAddress.split(',')[0] || azureData.formattedAddress,
-          confidence: 0.5
+          confidence: 0.5,
+          sourceType: "AZURE_MAPS"
         };
       }
     }
@@ -134,7 +141,8 @@ export async function runQualityAssurance(provider, runId) {
       suggested.phone = {
         oldValue: provider.phone || '',
         suggestedValue: poi.phone,
-        confidence: 0.85
+        confidence: 0.85,
+        sourceType: "AZURE_POI"
       };
     }
 
@@ -143,7 +151,8 @@ export async function runQualityAssurance(provider, runId) {
       suggested.zip = {
         oldValue: provider.zip,
         suggestedValue: poi.postalCode,
-        confidence: 0.9
+        confidence: 0.9,
+        sourceType: "AZURE_POI"
       };
     }
 
@@ -154,7 +163,8 @@ export async function runQualityAssurance(provider, runId) {
         suggested.city = {
           oldValue: provider.city,
           suggestedValue: poi.city,
-          confidence: 0.85
+          confidence: 0.85,
+          sourceType: "AZURE_POI"
         };
       }
     }
@@ -166,7 +176,8 @@ export async function runQualityAssurance(provider, runId) {
         suggested.state = {
           oldValue: provider.state,
           suggestedValue: poi.state,
-          confidence: 0.9
+          confidence: 0.9,
+          sourceType: "AZURE_POI"
         };
       }
     }
@@ -176,10 +187,37 @@ export async function runQualityAssurance(provider, runId) {
       suggested.website = {
         oldValue: provider.website || '',
         suggestedValue: poi.website,
-        confidence: 0.8
+        confidence: 0.8,
+        sourceType: "AZURE_POI"
       };
     }
 
+  }
+
+  // Check scraping fallback data
+  const scrapingSource = sources.find(s => s.source_type === "SCRAPING_FALLBACK");
+  if (scrapingSource && scrapingSource.raw_data && scrapingSource.raw_data.isFound) {
+    const scraped = scrapingSource.raw_data;
+
+    // Phone comparison (only if not already suggested by other sources)
+    if (scraped.phone && !suggested.phone && normalizePhone(scraped.phone) !== normalizePhone(provider.phone)) {
+      suggested.phone = {
+        oldValue: provider.phone || '',
+        suggestedValue: scraped.phone,
+        confidence: 0.7,
+        sourceType: "SCRAPING_FALLBACK"
+      };
+    }
+
+    // Website enrichment (only if not already suggested)
+    if (scraped.website && !suggested.website) {
+      suggested.website = {
+        oldValue: provider.website || '',
+        suggestedValue: scraped.website,
+        confidence: 0.65,
+        sourceType: "SCRAPING_FALLBACK"
+      };
+    }
   }
 
   // Prepare issue rows for bulk insert
@@ -191,6 +229,7 @@ export async function runQualityAssurance(provider, runId) {
     suggested_value: s.suggestedValue,
     confidence: s.confidence,
     severity: s.confidence > 0.9 ? "HIGH" : s.confidence > 0.7 ? "MEDIUM" : "LOW",
+    source_type: s.sourceType || "UNKNOWN",
     status: "OPEN"
   }));
 
