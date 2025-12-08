@@ -93,3 +93,71 @@ document.addEventListener('click', async (ev) => {
     alert(err?.message || String(err));
   }
 });
+
+// Download CSV button handler
+document.getElementById('downloadCsvBtn')?.addEventListener('click', async () => {
+  try {
+    const btn = document.getElementById('downloadCsvBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Generating...';
+
+    const res = await fetch('/api/providers');
+    const json = await res.json();
+    
+    if (!json.providers || json.providers.length === 0) {
+      alert('No providers to download');
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+      return;
+    }
+
+    // Create CSV content
+    const headers = ['Name', 'Phone', 'Email', 'Address', 'City', 'State', 'ZIP', 'Specialty', 'NPI ID', 'License Number', 'License State', 'License Status', 'Status'];
+    const csvRows = [headers.join(',')];
+    
+    json.providers.forEach(p => {
+      const row = [
+        `"${(p.name || '').replace(/"/g, '""')}"`,
+        `"${(p.phone || '').replace(/"/g, '""')}"`,
+        `"${(p.email || '').replace(/"/g, '""')}"`,
+        `"${(p.address_line1 || '').replace(/"/g, '""')}"`,
+        `"${(p.city || '').replace(/"/g, '""')}"`,
+        `"${(p.state || '').replace(/"/g, '""')}"`,
+        `"${(p.zip || '').replace(/"/g, '""')}"`,
+        `"${(p.speciality || '').replace(/"/g, '""')}"`,
+        `"${(p.npi_id || '').replace(/"/g, '""')}"`,
+        `"${(p.license_number || '').replace(/"/g, '""')}"`,
+        `"${(p.license_state || '').replace(/"/g, '""')}"`,
+        `"${(p.license_status || '').replace(/"/g, '""')}"`,
+        `"${(p.status || '').replace(/"/g, '""')}"`
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    const csvContent = csvRows.join('\n');
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    const timestamp = new Date().toISOString().split('T')[0];
+    link.setAttribute('href', url);
+    link.setAttribute('download', `truelens_providers_${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  } catch (err) {
+    console.error('Download error:', err);
+    alert('Failed to download CSV: ' + (err?.message || String(err)));
+    const btn = document.getElementById('downloadCsvBtn');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-download"></i> Download CSV';
+  }
+});
