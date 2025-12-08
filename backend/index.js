@@ -37,6 +37,7 @@ app.use("/api/directory", exportRoutes);
 
 app.get("/", (req, res) => res.render("index"));
 app.get("/upload", (req, res) => res.render("upload"));
+app.get("/add-provider", (req, res) => res.render("add-provider-by-npi"));
 app.get("/providers", (req, res) => res.render("providers"));
 app.get("/provider/:id", (req, res) => res.render("provider", { providerId: req.params.id }));
 app.get("/runs", async (req, res) => {

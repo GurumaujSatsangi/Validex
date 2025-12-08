@@ -160,6 +160,116 @@ export async function searchNpiByName(provider) {
 }
 
 /**
+ * Fetch complete provider data by NPI for database insertion
+ * Returns normalized provider object ready for database
+ * @param {string} npi - NPI number (10 digits)
+ * @returns {Promise<Object|null>} Provider object or null if not found
+ */
+export async function fetchProviderByNpi(npi) {
+  console.log(`[NPI Client] Fetching provider data for NPI: ${npi}`);
+
+  // Validate NPI format
+  if (!npi || typeof npi !== 'string') {
+    throw new Error('Invalid NPI: must be a string');
+  }
+
+  const cleanNpi = npi.trim();
+  
+  if (!/^\d{10}$/.test(cleanNpi)) {
+    throw new Error('Invalid NPI format: must be exactly 10 digits');
+  }
+
+  try {
+    const response = await axios.get(NPI_REGISTRY_BASE_URL, {
+      params: {
+        version: API_VERSION,
+        number: cleanNpi,
+        limit: 1
+      },
+      timeout: 10000
+    });
+
+    const results = response.data?.results;
+    if (!results || results.length === 0) {
+      throw new Error(`No provider found with NPI: ${cleanNpi}`);
+    }
+
+    const entry = results[0];
+    const basicInfo = entry.basic || {};
+    const addresses = entry.addresses || [];
+    const primaryAddr = addresses.find(a => a.address_purpose === "LOCATION") || addresses[0];
+    const mailingAddr = addresses.find(a => a.address_purpose === "MAILING");
+    const taxonomies = entry.taxonomies || [];
+    const primaryTaxonomy = taxonomies.find(t => t.primary) || taxonomies[0] || {};
+
+    // Determine provider name
+    let providerName;
+    if (basicInfo.first_name && basicInfo.last_name) {
+      providerName = `${basicInfo.first_name} ${basicInfo.last_name}`.trim();
+      if (basicInfo.middle_name) {
+        providerName = `${basicInfo.first_name} ${basicInfo.middle_name} ${basicInfo.last_name}`.trim();
+      }
+    } else if (basicInfo.organization_name) {
+      providerName = basicInfo.organization_name.trim();
+    } else {
+      providerName = 'Unknown Provider';
+    }
+
+    // Format phone number
+    const phoneRaw = primaryAddr?.telephone_number;
+    const phone = phoneRaw ? formatPhoneNumber(phoneRaw) : null;
+
+    // Extract license information
+    let licenseNumber = primaryTaxonomy.license || null;
+    let licenseState = primaryTaxonomy.state || primaryAddr?.state || null;
+
+    // Build provider object for database
+    const providerData = {
+      npi_id: cleanNpi,
+      name: providerName,
+      phone: phone,
+      email: null, // NPI Registry doesn't provide email
+      address_line1: primaryAddr?.address_1 || null,
+      city: primaryAddr?.city || null,
+      state: primaryAddr?.state || null,
+      zip: primaryAddr?.postal_code || null,
+      speciality: primaryTaxonomy.desc || 'General Practice',
+      license_number: licenseNumber,
+      license_state: licenseState,
+      license_status: 'Active', // NPI Registry only shows active providers
+      taxonomy_code: primaryTaxonomy.code || null,
+      enumeration_date: entry.enumeration_date || null,
+      last_updated: entry.last_updated || null,
+      // Store full NPI response for reference
+      npi_raw_data: entry
+    };
+
+    console.log(`[NPI Client] Successfully fetched provider: ${providerName} (${cleanNpi})`);
+    
+    return providerData;
+
+  } catch (err) {
+    if (err.message.includes('No provider found')) {
+      throw err;
+    }
+    console.error(`[NPI Client] Failed to fetch NPI data for ${cleanNpi}:`, err.message);
+    throw new Error(`Failed to fetch NPI data: ${err.message}`);
+  }
+}
+
+/**
+ * Format phone number to standard format
+ */
+function formatPhoneNumber(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return phone;
+}
+
+/**
  * Legacy function - now routes to appropriate search method
  * @deprecated Use getNpiDataByNpiId or searchNpiByName directly
  */

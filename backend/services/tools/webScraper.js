@@ -15,6 +15,7 @@ export async function scrapeProviderInfo(provider) {
     phone: null,
     address: null,
     website: null,
+    email: null,
     categories: null,
     sources: []
   };
@@ -30,6 +31,7 @@ export async function scrapeProviderInfo(provider) {
         scrapedData.phone = scrapedData.phone || npiProfileData.phone;
         scrapedData.address = scrapedData.address || npiProfileData.address;
         scrapedData.website = scrapedData.website || npiProfileData.website;
+        scrapedData.email = scrapedData.email || npiProfileData.email;
         scrapedData.sources.push("NPI_REGISTRY_HTML");
       }
     } catch (err) {
@@ -48,6 +50,7 @@ export async function scrapeProviderInfo(provider) {
       scrapedData.phone = scrapedData.phone || searchData.phone;
       scrapedData.address = scrapedData.address || searchData.address;
       scrapedData.website = scrapedData.website || searchData.website;
+      scrapedData.email = scrapedData.email || searchData.email;
       scrapedData.categories = scrapedData.categories || searchData.categories;
       scrapedData.sources.push(...searchData.sources);
     }
@@ -85,9 +88,36 @@ async function scrapeNpiRegistryProfile(npiId) {
     const phone = $('span.phone-number').text().trim() || null;
     const address = $('div.practice-address').text().trim() || null;
     const website = $('a.website-link').attr('href') || null;
+    
+    // Extract email from mailto links or text patterns
+    let email = null;
+    $('a[href^="mailto:"]').each((i, elem) => {
+      const href = $(elem).attr('href');
+      if (href && href.startsWith('mailto:')) {
+        email = href.replace('mailto:', '').split('?')[0].trim();
+        return false; // break
+      }
+    });
+    
+    // If no mailto link, try regex pattern on page text
+    if (!email) {
+      const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const bodyText = $('body').text();
+      const emails = bodyText.match(emailPattern);
+      if (emails && emails.length > 0) {
+        // Filter out common non-provider emails
+        email = emails.find(e => 
+          !e.includes('example.com') && 
+          !e.includes('test.com') &&
+          !e.includes('noreply') &&
+          !e.includes('support@') &&
+          !e.includes('info@')
+        ) || emails[0];
+      }
+    }
 
-    if (phone || address || website) {
-      return { phone, address, website };
+    if (phone || address || website || email) {
+      return { phone, address, website, email };
     }
 
     return null;
@@ -129,6 +159,7 @@ async function scrapeGenericSearch(provider) {
       phone: null,
       address: null,
       website: null,
+      email: null,
       categories: null,
       sources: []
     };
@@ -156,6 +187,7 @@ async function scrapeGenericSearch(provider) {
       phone: null,
       address: null,
       website: null,
+      email: null,
       categories: null,
       sources: []
     };

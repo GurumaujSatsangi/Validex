@@ -1,5 +1,7 @@
 import express from "express";
 import { supabase } from "../supabaseClient.js";
+import { fetchProviderByNpi } from "../services/tools/npiClient.js";
+import { runValidationForSingleProvider } from "../services/validationService.js";
 
 const router = express.Router();
 
@@ -86,6 +88,135 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     console.error('Unexpected error deleting provider', providerId, err);
     res.status(500).json({ error: 'Unexpected error deleting provider' });
+  }
+});
+
+// POST /api/providers/add-by-npi - Add provider by NPI and run validation
+router.post('/add-by-npi', async (req, res) => {
+  const { npi } = req.body;
+
+  console.log(`[Providers API] Add by NPI request received:`, npi);
+
+  try {
+    // Validate NPI input
+    if (!npi || typeof npi !== 'string') {
+      return res.status(400).json({ error: 'NPI is required and must be a string' });
+    }
+
+    const cleanNpi = npi.trim();
+    
+    if (!/^\d{10}$/.test(cleanNpi)) {
+      return res.status(400).json({ error: 'Invalid NPI format. Must be exactly 10 digits.' });
+    }
+
+    // Check if provider already exists
+    const { data: existingProvider } = await supabase
+      .from('providers')
+      .select('id, name')
+      .eq('npi_id', cleanNpi)
+      .single();
+
+    if (existingProvider) {
+      console.log(`[Providers API] Provider with NPI ${cleanNpi} already exists`);
+      return res.status(409).json({ 
+        error: 'Provider already exists',
+        providerId: existingProvider.id,
+        providerName: existingProvider.name
+      });
+    }
+
+    // Fetch provider data from NPI Registry
+    let providerData;
+    try {
+      providerData = await fetchProviderByNpi(cleanNpi);
+    } catch (err) {
+      console.error(`[Providers API] Failed to fetch NPI data:`, err.message);
+      return res.status(404).json({ error: err.message });
+    }
+
+    // Insert provider into database
+    const { data: newProvider, error: insertErr } = await supabase
+      .from('providers')
+      .insert({
+        npi_id: providerData.npi_id,
+        name: providerData.name,
+        phone: providerData.phone,
+        email: providerData.email,
+        address_line1: providerData.address_line1,
+        city: providerData.city,
+        state: providerData.state,
+        zip: providerData.zip,
+        speciality: providerData.speciality,
+        license_number: providerData.license_number,
+        license_state: providerData.license_state,
+        license_status: providerData.license_status,
+        status: 'ACTIVE',
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (insertErr) {
+      console.error(`[Providers API] Failed to insert provider:`, insertErr.message);
+      return res.status(500).json({ error: 'Failed to insert provider into database' });
+    }
+
+    const providerId = newProvider.id;
+    console.log(`[Providers API] Provider created successfully:`, providerId);
+
+    // Insert NPI data as provider_source
+    const { error: sourceErr } = await supabase
+      .from('provider_sources')
+      .insert({
+        provider_id: providerId,
+        source_type: 'NPI_API',
+        raw_data: {
+          isFound: true,
+          npi: providerData.npi_id,
+          name: providerData.name,
+          phone: providerData.phone,
+          speciality: providerData.speciality,
+          address: {
+            address_1: providerData.address_line1,
+            address_2: providerData.address_line2,
+            city: providerData.city,
+            state: providerData.state,
+            postal_code: providerData.zip
+          },
+          license: providerData.license_number,
+          raw: providerData.npi_raw_data
+        }
+      });
+
+    if (sourceErr) {
+      console.error(`[Providers API] Failed to insert provider source:`, sourceErr.message);
+      // Don't fail the request, just log
+    }
+
+    // Run validation workflow asynchronously
+    console.log(`[Providers API] Starting validation for provider ${providerId}`);
+    
+    // Run validation in background and send response immediately
+    runValidationForSingleProvider(providerId)
+      .then(runId => {
+        console.log(`[Providers API] Validation completed for provider ${providerId}, run ${runId}`);
+      })
+      .catch(err => {
+        console.error(`[Providers API] Validation failed for provider ${providerId}:`, err.message);
+      });
+
+    // Return success response immediately
+    res.status(201).json({
+      success: true,
+      message: 'Provider added successfully. Validation started.',
+      providerId: providerId,
+      providerName: newProvider.name,
+      npi: cleanNpi
+    });
+
+  } catch (err) {
+    console.error('[Providers API] Unexpected error in add-by-npi:', err);
+    res.status(500).json({ error: 'Unexpected server error' });
   }
 });
 

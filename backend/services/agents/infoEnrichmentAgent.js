@@ -49,5 +49,38 @@ export async function runInfoEnrichment(provider) {
     }
   }
 
+  // ===============================================
+  // STEP 3: UPDATE PROVIDER EMAIL IF FOUND
+  // ===============================================
+  let providerEmail = null;
+
+  // Try to get email from POI data
+  if (poiData && poiData.email) {
+    providerEmail = poiData.email;
+  }
+
+  // Try to get email from scraped data
+  if (!providerEmail && scrapedData && scrapedData.email) {
+    providerEmail = scrapedData.email;
+  }
+
+  // Update provider record with email if found and not already set
+  if (providerEmail && !provider.email) {
+    try {
+      const { error: updateErr } = await supabase
+        .from('providers')
+        .update({ email: providerEmail })
+        .eq('id', provider.id);
+
+      if (updateErr) {
+        console.error("[Info Enrichment] Failed to update provider email:", updateErr.message);
+      } else {
+        console.info("[Info Enrichment] Updated provider email:", providerEmail);
+      }
+    } catch (err) {
+      console.error("[Info Enrichment] Error updating provider email:", err);
+    }
+  }
+
   return { poiData, scrapedData };
 }
