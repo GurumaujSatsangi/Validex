@@ -61,21 +61,22 @@ async function load() {
 
     if (issues.length === 0) {
       issuesTbl.style.display = 'none';
-      noIssuesMsg.classList.remove('d-none');
+      noIssuesMsg.style.display = 'flex';
     } else {
       issuesTbl.style.display = 'table';
-      noIssuesMsg.classList.add('d-none');
+      noIssuesMsg.style.display = 'none';
       issuesTbody.innerHTML = '';
       for (const it of issues) {
         const tr = document.createElement('tr');
-        const statusBadgeClass = it.status === 'ACCEPTED' ? 'bg-success' : it.status === 'REJECTED' ? 'bg-secondary' : 'bg-warning text-dark';
+        const statusBadgeClass = it.status === 'ACCEPTED' ? 'badge-success' : it.status === 'REJECTED' ? 'badge' : 'badge-warning';
+        const severityBadgeClass = it.severity === 'HIGH' ? 'badge-danger' : it.severity === 'MEDIUM' ? 'badge-warning' : 'badge-info';
         
         tr.innerHTML = `
           <td><strong>${escapeHtml(it.field_name)}</strong></td>
-          <td>${escapeHtml(it.old_value)}</td>
-          <td><span class="badge bg-info">${escapeHtml(it.suggested_value)}</span></td>
-          <td><span class="badge bg-secondary">${(it.confidence * 100).toFixed(0)}%</span></td>
-          <td><span class="badge bg-danger">${escapeHtml(it.severity)}</span></td>
+          <td><code>${escapeHtml(it.old_value)}</code></td>
+          <td><code>${escapeHtml(it.suggested_value)}</code></td>
+          <td><span class="badge badge-info">${(it.confidence * 100).toFixed(0)}%</span></td>
+          <td><span class="badge ${severityBadgeClass}">${escapeHtml(it.severity)}</span></td>
           <td><span class="badge ${statusBadgeClass}">${escapeHtml(it.status)}</span></td>
         `;
         issuesTbody.appendChild(tr);

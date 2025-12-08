@@ -81,8 +81,8 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
       title: 'Processing PDF',
       html: `
         <div class="mb-3">
-          <div class="progress" style="height: 25px;">
-            <div id="pdf-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+          <div class="progress" style="height: 25px; background-color: #2a2a3a;">
+            <div id="pdf-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%; background-color: #ffe600; color: #000;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
           </div>
         </div>
         <p id="pdf-status" class="text-muted">Uploading and scanning PDF...</p>
@@ -95,7 +95,8 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
         let currentProgress = 0;
         pollInterval = setInterval(() => {
           if (currentProgress < 95) {
-            currentProgress += Math.random() * 15;
+            // Slower, more realistic progress
+            currentProgress += Math.random() * 5 + 1;
             if (currentProgress > 95) currentProgress = 95;
             
             const progressBar = document.getElementById('pdf-progress-bar');
@@ -103,9 +104,10 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
             const etaText = document.getElementById('pdf-eta');
             
             if (progressBar) {
-              progressBar.style.width = Math.round(currentProgress) + '%';
-              progressBar.setAttribute('aria-valuenow', Math.round(currentProgress));
-              progressBar.textContent = Math.round(currentProgress) + '%';
+              const percent = Math.round(currentProgress);
+              progressBar.style.width = percent + '%';
+              progressBar.setAttribute('aria-valuenow', percent);
+              progressBar.textContent = percent + '%';
             }
             
             // Calculate ETA

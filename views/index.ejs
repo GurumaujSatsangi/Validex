@@ -1,73 +1,278 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>TrueLens</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
-    <link rel="stylesheet" href="/css/styles.css" />
-  </head>
-  <body>
-    <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: #ffe600;">
-      <div class="container-fluid">
-        <a class="navbar-brand fw-bold text-dark" href="/">
-          <i class="bi bi-check-circle-fill"></i> TrueLens
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - TrueLens</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/css/dashboard.css" rel="stylesheet">
+</head>
+<body>
+  <div class="dashboard-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <a href="/" class="sidebar-logo">
+          <i class="bi bi-check-circle-fill"></i>
+          <span>TrueLens</span>
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-          <ul class="navbar-nav ms-auto">
-            <li class="nav-item"><a class="nav-link text-dark" href="/upload"><i class="bi bi-cloud-arrow-up"></i> Upload</a></li>
-            <li class="nav-item"><a class="nav-link text-dark" href="/providers"><i class="bi bi-people-fill"></i> Providers</a></li>
-            <li class="nav-item"><a class="nav-link text-dark" href="/runs"><i class="bi bi-play-circle-fill"></i> Runs</a></li>
-          </ul>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">Main</div>
+          <a href="/" class="nav-item active">
+            <i class="bi bi-grid-fill"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="/upload" class="nav-item">
+            <i class="bi bi-cloud-arrow-up"></i>
+            <span>Upload</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Data</div>
+          <a href="/providers" class="nav-item">
+            <i class="bi bi-people-fill"></i>
+            <span>Providers</span>
+          </a>
+          <a href="/runs" class="nav-item">
+            <i class="bi bi-play-circle-fill"></i>
+            <span>Validation Runs</span>
+          </a>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Top Bar -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <div>
+            <div class="topbar-title">Dashboard</div>
+            <div class="topbar-subtitle">Provider Directory Validation System</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-time">
+            <i class="bi bi-clock"></i> <span id="currentTime"></span>
+          </div>
         </div>
       </div>
-    </nav>
 
-    <main class="container mt-5">
-      <div class="row">
-        <div class="col-md-8 mx-auto">
-          <h1 class="display-4 mb-4"><i class="bi bi-check-circle-fill text-success"></i> Welcome to TrueLens</h1>
-          <p class="lead">A data validation and provider directory management system.</p>
-          <div class="row mt-5">
-            <div class="col-md-4 mb-3">
-              <div class="card border-0 shadow-sm text-center">
-                <div class="card-body">
-                  <i class="bi bi-cloud-arrow-up display-4 text-primary mb-3"></i>
-                  <h5 class="card-title">Upload</h5>
-                  <p class="card-text small">Import provider data from CSV files</p>
-                  <a href="/upload" class="btn btn-primary btn-sm">Go to Upload</a>
-                </div>
+      <!-- Content Area -->
+      <div class="content-area">
+        <!-- Metrics Grid -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-header">
+              <div class="metric-label">Total Providers</div>
+              <div class="metric-icon">
+                <i class="bi bi-people-fill"></i>
               </div>
             </div>
-            <div class="col-md-4 mb-3">
-              <div class="card border-0 shadow-sm text-center">
-                <div class="card-body">
-                  <i class="bi bi-people-fill display-4 text-success mb-3"></i>
-                  <h5 class="card-title">Providers</h5>
-                  <p class="card-text small">View and manage provider records</p>
-                  <a href="/providers" class="btn btn-success btn-sm">View Providers</a>
-                </div>
+            <div class="metric-value" id="totalProviders">-</div>
+            <div class="metric-change">
+              <i class="bi bi-arrow-up"></i> Loading...
+            </div>
+          </div>
+
+          <div class="metric-card success">
+            <div class="metric-header">
+              <div class="metric-label">Validated</div>
+              <div class="metric-icon">
+                <i class="bi bi-check-circle-fill"></i>
               </div>
             </div>
-            <div class="col-md-4 mb-3">
-              <div class="card border-0 shadow-sm text-center">
-                <div class="card-body">
-                  <i class="bi bi-play-circle-fill display-4 text-warning mb-3"></i>
-                  <h5 class="card-title">Validation Runs</h5>
-                  <p class="card-text small">Start and monitor validation processes</p>
-                  <a href="/runs" class="btn btn-warning btn-sm">View Runs</a>
+            <div class="metric-value" id="validatedCount">-</div>
+            <div class="metric-change">
+              <i class="bi bi-arrow-up"></i> Active
+            </div>
+          </div>
+
+          <div class="metric-card warning">
+            <div class="metric-header">
+              <div class="metric-label">Needs Review</div>
+              <div class="metric-icon">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+              </div>
+            </div>
+            <div class="metric-value" id="needsReviewCount">-</div>
+            <div class="metric-change">
+              <i class="bi bi-dash"></i> Pending
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <div class="metric-label">Validation Runs</div>
+              <div class="metric-icon">
+                <i class="bi bi-play-circle-fill"></i>
+              </div>
+            </div>
+            <div class="metric-value" id="totalRuns">-</div>
+            <div class="metric-change">
+              <i class="bi bi-arrow-up"></i> All time
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="bi bi-lightning-fill"></i>
+              Quick Actions
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="upload-grid">
+              <div class="upload-card" onclick="window.location.href='/upload'">
+                <div class="upload-icon">
+                  <i class="bi bi-filetype-csv"></i>
                 </div>
+                <div class="upload-title">Upload CSV</div>
+                <div class="upload-description">Import provider data from CSV files</div>
+                <button class="btn btn-primary">Select CSV File</button>
+              </div>
+
+              <div class="upload-card" onclick="window.location.href='/upload'">
+                <div class="upload-icon">
+                  <i class="bi bi-file-pdf"></i>
+                </div>
+                <div class="upload-title">Upload PDF</div>
+                <div class="upload-description">Extract data from scanned documents</div>
+                <button class="btn btn-primary">Select PDF File</button>
+              </div>
+
+              <div class="upload-card" onclick="window.location.href='/upload'">
+                <div class="upload-icon">
+                  <i class="bi bi-person-plus-fill"></i>
+                </div>
+                <div class="upload-title">Add by NPI</div>
+                <div class="upload-description">Fetch provider using NPI number</div>
+                <button class="btn btn-primary">Enter NPI</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="bi bi-clock-history"></i>
+              Recent Validation Runs
+            </div>
+            <div class="card-actions">
+              <a href="/runs" class="btn btn-secondary btn-sm">View All</a>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="recentRuns">
+              <div class="text-center">
+                <div class="spinner"></div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </main>
+    </div>
+  </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  </body>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>
+    // Update time
+    function updateTime() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('currentTime').textContent = timeStr;
+    }
+    updateTime();
+    setInterval(updateTime, 60000);
+
+    // Load dashboard metrics
+    async function loadDashboardMetrics() {
+      try {
+        const [providersRes, runsRes] = await Promise.all([
+          fetch('/api/providers'),
+          fetch('/api/validation-runs')
+        ]);
+        
+        const providersData = await providersRes.json();
+        const runsData = await runsRes.json();
+        
+        const providers = providersData.providers || [];
+        const runs = runsData.runs || [];
+        
+        document.getElementById('totalProviders').textContent = providers.length;
+        document.getElementById('totalRuns').textContent = runs.length;
+        
+        // Calculate needs review
+        let needsReview = 0;
+        runs.forEach(run => {
+          needsReview += run.needs_review_count || 0;
+        });
+        
+        document.getElementById('validatedCount').textContent = providers.length - needsReview;
+        document.getElementById('needsReviewCount').textContent = needsReview;
+        
+        // Update metric change text
+        document.querySelectorAll('.metric-change').forEach((el, index) => {
+          if (index === 0) el.innerHTML = '<i class="bi bi-database"></i> All providers';
+          if (index === 1) el.innerHTML = '<i class="bi bi-check-circle"></i> Active';
+          if (index === 2) el.innerHTML = '<i class="bi bi-exclamation-circle"></i> Pending';
+          if (index === 3) el.innerHTML = '<i class="bi bi-clock-history"></i> All time';
+        });
+        
+        // Display recent runs
+        displayRecentRuns(runs.slice(0, 5));
+      } catch (err) {
+        console.error('Error loading dashboard:', err);
+      }
+    }
+
+    function displayRecentRuns(runs) {
+      const container = document.getElementById('recentRuns');
+      
+      if (!runs || runs.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon"><i class="bi bi-inbox"></i></div><div class="empty-title">No validation runs yet</div><div class="empty-text">Upload providers to start validation</div></div>';
+        return;
+      }
+      
+      const html = `
+        <table>
+          <thead>
+            <tr>
+              <th>Run ID</th>
+              <th>Started</th>
+              <th>Providers</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${runs.map(run => `
+              <tr>
+                <td><code>${run.id.substring(0, 8)}...</code></td>
+                <td>${new Date(run.started_at).toLocaleString()}</td>
+                <td><span class="badge badge-info">${run.total_providers || 0}</span></td>
+                <td>
+                  ${run.completed_at ? '<span class="badge badge-success">Completed</span>' : '<span class="badge badge-warning">Running</span>'}
+                </td>
+                <td>
+                  <a href="/runs" class="btn btn-secondary btn-sm">View</a>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      
+      container.innerHTML = html;
+    }
+
+    loadDashboardMetrics();
+  </script>
+</body>
 </html>
