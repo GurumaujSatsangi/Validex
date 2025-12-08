@@ -28,47 +28,83 @@
     </nav>
 
     <main class="container mt-5">
-      <div class="row">
-        <div class="col-md-8 mx-auto">
-          <h1 class="mb-4"><i class="bi bi-cloud-arrow-up"></i> Upload Data</h1>
-          
-          <!-- CSV Upload Section -->
-          <div class="card shadow mb-4">
-            <div class="card-header bg-primary text-white">
-              <h5 class="mb-0"><i class="bi bi-filetype-csv"></i> Upload CSV</h5>
+      <h1 class="mb-5 text-center"><i class="bi bi-cloud-arrow-up"></i> Add Providers to TrueLens</h1>
+      
+      <div class="row g-4 mb-5">
+        <!-- CSV Upload Card -->
+        <div class="col-md-4">
+          <div class="card shadow h-100">
+            <div class="card-header bg-primary text-white text-center py-3">
+              <i class="bi bi-filetype-csv" style="font-size: 3rem;"></i>
+              <h5 class="mt-2 mb-0">Upload CSV</h5>
             </div>
-            <div class="card-body">
-              <form id="uploadForm">
+            <div class="card-body d-flex flex-column">
+              <p class="text-muted mb-3">Import multiple providers from a CSV file with pre-formatted data.</p>
+              <form id="uploadForm" class="mt-auto">
                 <div class="mb-3">
-                  <label for="csvFile" class="form-label">Select CSV File</label>
+                  <label for="csvFile" class="form-label fw-bold">Select CSV File</label>
                   <input type="file" class="form-control" id="csvFile" name="file" accept=".csv" required />
-                  <small class="text-muted">Supported: CSV files with provider data</small>
                 </div>
                 <button type="submit" class="btn btn-primary w-100">
-                  <i class="bi bi-upload"></i> Upload & Import
+                  <i class="bi bi-upload"></i> Upload CSV
                 </button>
               </form>
               <div id="uploadResult" class="mt-3"></div>
             </div>
           </div>
+        </div>
 
-          <!-- PDF Upload Section -->
-          <div class="card shadow">
-            <div class="card-header bg-info text-white">
-              <h5 class="mb-0"><i class="bi bi-file-pdf"></i> Upload Scanned PDF</h5>
+        <!-- PDF Upload Card -->
+        <div class="col-md-4">
+          <div class="card shadow h-100">
+            <div class="card-header bg-info text-white text-center py-3">
+              <i class="bi bi-file-pdf" style="font-size: 3rem;"></i>
+              <h5 class="mt-2 mb-0">Upload PDF</h5>
             </div>
-            <div class="card-body">
-              <form id="uploadPdfForm">
+            <div class="card-body d-flex flex-column">
+              <p class="text-muted mb-3">Extract providers from scanned PDF documents using OCR technology.</p>
+              <form id="uploadPdfForm" class="mt-auto">
                 <div class="mb-3">
-                  <label for="pdfFile" class="form-label">Select PDF File</label>
+                  <label for="pdfFile" class="form-label fw-bold">Select PDF File</label>
                   <input type="file" class="form-control" id="pdfFile" name="file" accept=".pdf" required />
-                  <small class="text-muted">Supported: PDF files with scanned provider lists (OCR will be applied)</small>
                 </div>
                 <button type="submit" class="btn btn-info w-100">
-                  <i class="bi bi-upload"></i> Upload & Extract via OCR
+                  <i class="bi bi-upload"></i> Upload PDF
                 </button>
               </form>
               <div id="uploadPdfResult" class="mt-3"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add by NPI Card -->
+        <div class="col-md-4">
+          <div class="card shadow h-100">
+            <div class="card-header bg-success text-white text-center py-3">
+              <i class="bi bi-person-plus-fill" style="font-size: 3rem;"></i>
+              <h5 class="mt-2 mb-0">Add by NPI</h5>
+            </div>
+            <div class="card-body d-flex flex-column">
+              <p class="text-muted mb-3">Fetch and validate a single provider using their 10-digit NPI number.</p>
+              <form id="addNpiForm" class="mt-auto">
+                <div class="mb-3">
+                  <label for="npiInput" class="form-label fw-bold">NPI Number</label>
+                  <input 
+                    type="text" 
+                    class="form-control text-center" 
+                    id="npiInput" 
+                    placeholder="1234567890" 
+                    maxlength="10"
+                    pattern="[0-9]{10}"
+                    style="font-family: 'Courier New', monospace; letter-spacing: 2px;"
+                    required
+                  />
+                </div>
+                <button type="submit" class="btn btn-success w-100">
+                  <i class="bi bi-search"></i> Fetch Provider
+                </button>
+              </form>
+              <div id="npiResult" class="mt-3"></div>
             </div>
           </div>
         </div>

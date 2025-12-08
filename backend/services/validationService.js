@@ -102,6 +102,24 @@ export async function runValidationForImportedProviders(providerIds) {
 
     console.info('[Validation Service] Validation run complete:', runId, '- Success:', successCount, '- Needs Review:', needsReviewCount);
 
+    // Send admin email notification
+    try {
+      console.info('[Validation Service] Sending admin notification email for run:', runId);
+      await sendAdminValidationSummaryEmail(runId, providerIds[0]);
+      console.info('[Validation Service] Admin email sent successfully');
+    } catch (emailErr) {
+      console.error('[Validation Service] Failed to send admin email:', emailErr.message || emailErr);
+    }
+
+    // Send provider emails for issues
+    for (const providerId of providerIds) {
+      try {
+        await sendProviderDiscrepancyEmail(providerId, runId);
+      } catch (emailErr) {
+        console.error('[Validation Service] Failed to send provider email for', providerId, ':', emailErr.message || emailErr);
+      }
+    }
+
     return runId;
   } catch (error) {
     console.error('[Validation Service] Fatal error in runValidationForImportedProviders:', error.message || error);

@@ -25,64 +25,85 @@
       </div>
     </nav>
 
-    <main class="container-fluid py-5">
+    <main class="container py-5">
       <div class="row mb-4">
         <div class="col">
           <h1 class="display-5 fw-bold"><i class="bi bi-play-circle"></i> Validation Runs</h1>
+          <p class="text-muted">View and manage all provider validation workflows</p>
         </div>
         <div class="col-auto">
-          <button id="startRun" class="btn btn-success btn-lg"><i class="bi bi-play-fill"></i> Start New Run</button>
+          <button id="startRun" class="btn btn-success btn-lg shadow">
+            <i class="bi bi-play-fill"></i> Start New Run
+          </button>
         </div>
       </div>
 
       <div class="card shadow-sm">
         <div class="card-body">
-          <div id="runsList">
-            <div class="spinner-border text-primary" role="status" style="display: none;">
-              <span class="visually-hidden">Loading...</span>
-            </div>
-            <table id="runsTbl" class="table table-hover table-striped" style="display: none;">
-              <thead class="table-light">
-                <tr>
-                  <th>Run ID</th>
-                  <th>Created</th>
-                  <th>Total</th>
-                  <th>Processed</th>
-                  <th>Success</th>
-                  <th>Needs Review</th>
-                  <th>Completed</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <% if (typeof runs !== 'undefined' && runs && runs.length) { %>
+          <% if (typeof runs !== 'undefined' && runs && runs.length) { %>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 20%;">Run ID</th>
+                    <th>Started</th>
+                    <th class="text-center">Total</th>
+                    <th class="text-center">Processed</th>
+                    <th class="text-center">Success</th>
+                    <th class="text-center">Needs Review</th>
+                    <th>Completed</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
                   <% runs.forEach(function(r){ %>
                     <tr>
-                      <td><code><%= r.id %></code></td>
+                      <td><code class="small"><%= r.id.substring(0, 8) %>...</code></td>
                       <td><%= r.started_at ? new Date(r.started_at).toLocaleString() : '—' %></td>
-                      <td><span class="badge bg-info"><%= r.total_providers ?? '—' %></span></td>
-                      <td><span class="badge bg-secondary"><%= r.processed ?? '—' %></span></td>
-                      <td><span class="badge bg-success"><%= r.success_count ?? '—' %></span></td>
-                      <td><span class="badge bg-warning text-dark"><%= r.needs_review_count ?? '—' %></span></td>
-                      <td><%= r.completed_at ? new Date(r.completed_at).toLocaleString() : '—' %></td>
+                      <td class="text-center"><span class="badge bg-info"><%= r.total_providers ?? '—' %></span></td>
+                      <td class="text-center"><span class="badge bg-secondary"><%= r.processed ?? '—' %></span></td>
+                      <td class="text-center"><span class="badge bg-success"><%= r.success_count ?? '—' %></span></td>
+                      <td class="text-center">
+                        <% if (r.needs_review_count > 0) { %>
+                          <span class="badge bg-warning text-dark"><%= r.needs_review_count %></span>
+                        <% } else { %>
+                          <span class="badge bg-light text-dark">0</span>
+                        <% } %>
+                      </td>
                       <td>
-                        <div class="d-flex gap-2">
+                        <% if (r.completed_at) { %>
+                          <small class="text-muted"><%= new Date(r.completed_at).toLocaleString() %></small>
+                        <% } else { %>
+                          <span class="badge bg-primary">Running</span>
+                        <% } %>
+                      </td>
+                      <td class="text-end">
+                        <div class="btn-group" role="group">
                           <% if (r.needs_review_count > 0) { %>
-                            <button class="btn btn-sm btn-info view-issues-btn" data-run-id="<%= r.id %>"><i class="bi bi-eye"></i> View Issues</button>
-                          <% } else { %>
-                            <span class="text-muted">No issues</span>
+                            <button class="btn btn-sm btn-outline-info view-issues-btn" data-run-id="<%= r.id %>">
+                              <i class="bi bi-eye"></i> Issues
+                            </button>
                           <% } %>
-                          <button class="btn btn-sm btn-outline-danger delete-run-btn" data-run-id="<%= r.id %>"><i class="bi bi-trash"></i> Delete</button>
+                          <button class="btn btn-sm btn-outline-danger delete-run-btn" data-run-id="<%= r.id %>">
+                            <i class="bi bi-trash"></i>
+                          </button>
                         </div>
                       </td>
                     </tr>
                   <% }) %>
-                <% } else { %>
-                  <tr><td colspan="8" class="text-center text-muted py-4">No validation runs yet. Start one to begin!</td></tr>
-                <% } %>
-              </tbody>
-            </table>
-          </div>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="text-center py-5">
+              <i class="bi bi-inbox" style="font-size: 4rem; color: #ccc;"></i>
+              <h4 class="mt-3 text-muted">No validation runs yet</h4>
+              <p class="text-muted">Upload providers or add by NPI to start a validation run</p>
+              <a href="/upload" class="btn btn-primary mt-3">
+                <i class="bi bi-upload"></i> Go to Upload
+              </a>
+            </div>
+          <% } %>
         </div>
       </div>
     </main>

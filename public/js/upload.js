@@ -38,10 +38,10 @@ document.getElementById('uploadForm')?.addEventListener('submit', async (e) => {
       title: 'Import Successful!',
       html: `<p><strong>${json.imported}</strong> providers imported successfully.</p>`,
       confirmButtonColor: '#ffe600',
-      confirmButtonText: 'View Providers'
+      confirmButtonText: 'View Validation Run'
     }).then((result) => {
       if (result.isConfirmed) {
-        window.location.href = '/providers';
+        window.location.href = '/runs';
       }
     });
 
@@ -73,8 +73,9 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
   }
 
   try {
-    let pollInterval;
+        let pollInterval;
     const startTime = Date.now();
+    let estimatedTotal = 60000; // Initial estimate: 60 seconds
 
     Swal.fire({
       title: 'Processing PDF',
@@ -85,7 +86,7 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
           </div>
         </div>
         <p id="pdf-status" class="text-muted">Uploading and scanning PDF...</p>
-        <p id="pdf-eta" class="text-muted small">Please wait...</p>
+        <p id="pdf-eta" class="text-muted small">Estimated time: ~1-2 minutes</p>
       `,
       allowOutsideClick: false,
       showConfirmButton: false,
@@ -98,10 +99,35 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
             if (currentProgress > 95) currentProgress = 95;
             
             const progressBar = document.getElementById('pdf-progress-bar');
+            const statusText = document.getElementById('pdf-status');
+            const etaText = document.getElementById('pdf-eta');
+            
             if (progressBar) {
               progressBar.style.width = Math.round(currentProgress) + '%';
               progressBar.setAttribute('aria-valuenow', Math.round(currentProgress));
               progressBar.textContent = Math.round(currentProgress) + '%';
+            }
+            
+            // Calculate ETA
+            const elapsed = Date.now() - startTime;
+            const estimatedRemaining = Math.max(0, estimatedTotal - elapsed);
+            const remainingSeconds = Math.ceil(estimatedRemaining / 1000);
+            
+            if (statusText) {
+              if (currentProgress < 30) {
+                statusText.textContent = 'Uploading PDF to server...';
+              } else if (currentProgress < 95) {
+                statusText.textContent = 'Running OCR on document...';
+              }
+            }
+            
+            if (etaText && remainingSeconds > 0) {
+              if (remainingSeconds > 60) {
+                const minutes = Math.ceil(remainingSeconds / 60);
+                etaText.textContent = `Estimated time remaining: ~${minutes} minute${minutes > 1 ? 's' : ''}`;
+              } else {
+                etaText.textContent = `Estimated time remaining: ~${remainingSeconds} seconds`;
+              }
             }
           }
         }, 800);
@@ -162,3 +188,84 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
   }
 });
 
+// Add by NPI Handler
+document.getElementById('addNpiForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const npiInput = document.getElementById('npiInput');
+  const npi = npiInput.value.trim();
+
+  // Validate NPI format
+  if (!/^\d{10}$/.test(npi)) {
+    return Swal.fire({
+      icon: 'error',
+      title: 'Invalid NPI',
+      text: 'NPI must be exactly 10 digits',
+      confirmButtonColor: '#333333'
+    });
+  }
+
+  try {
+    Swal.fire({
+      title: 'Fetching Provider...',
+      html: '<p>Looking up NPI Registry and validating provider information...</p>',
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
+
+    const res = await fetch('/api/providers/add-by-npi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ npi })
+    });
+
+    const json = await res.json();
+
+    if (!res.ok) {
+      let errorMessage = json?.error || 'Unknown error occurred';
+      if (res.status === 404) {
+        errorMessage = 'Provider not found in NPI Registry';
+      } else if (res.status === 409) {
+        errorMessage = 'Provider already exists in database';
+      }
+
+      Swal.fire({
+        icon: 'error',
+        title: 'Failed to Add Provider',
+        text: errorMessage,
+        confirmButtonColor: '#333333'
+      });
+      return;
+    }
+
+    Swal.fire({
+      icon: 'success',
+      title: 'Provider Added Successfully!',
+      html: `
+        <p><strong>${json.providerName}</strong></p>
+        <p><small>NPI: ${json.npi}</small></p>
+        <p class="text-muted small">Validation workflow started. Redirecting to validation runs...</p>
+      `,
+      confirmButtonColor: '#28a745',
+      confirmButtonText: 'View Validation Run',
+      timer: 3000,
+      timerProgressBar: true
+    }).then((result) => {
+      if (result.isConfirmed || result.dismiss === Swal.DismissReason.timer) {
+        window.location.href = '/runs';
+      }
+    });
+
+    npiInput.value = '';
+    document.getElementById('npiResult').innerHTML = '';
+  } catch (err) {
+    Swal.close();
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: err?.message || String(err),
+      confirmButtonColor: '#333333'
+    });
+  }
+});

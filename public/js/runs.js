@@ -221,8 +221,9 @@ document.addEventListener('click', async (ev) => {
         Swal.fire('Error', json?.error || 'Could not delete run', 'error');
         return;
       }
-      await loadRuns();
-      Swal.fire('Deleted', 'Validation run removed', 'success');
+      Swal.fire('Deleted', 'Validation run removed', 'success').then(() => {
+        window.location.reload();
+      });
     } catch (err) {
       Swal.fire('Error', err?.message || String(err), 'error');
     }
@@ -517,4 +518,4 @@ document.addEventListener('click', async (ev) => {
   }
 });
 
-loadRuns();
+// Don't call loadRuns() on page load since data is server-rendered

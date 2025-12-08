@@ -25,7 +25,8 @@ const FROM_EMAIL = process.env.SMTP_FROM || 'noreply@truelens.com';
  */
 function createTransporter() {
   try {
-    return nodemailer.createTransporter(SMTP_CONFIG);
+    const transporter = nodemailer.createTransport(SMTP_CONFIG);
+    return transporter;
   } catch (err) {
     console.error('[Email Agent] Failed to create transporter:', err.message);
     return null;
