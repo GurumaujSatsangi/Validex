@@ -725,6 +725,148 @@ textarea::placeholder {
 }
 
 /* ==============================================
+   VALIDATION ISSUES LAYOUT
+   ============================================== */
+
+.issues-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.issue-pill {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.pill-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.pill-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.issue-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  border-left: 4px solid var(--ey-yellow);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.issue-card:hover {
+  border-color: var(--ey-yellow);
+  transform: translateY(-2px);
+}
+
+.issue-card.severity-high { border-left-color: var(--accent-red); }
+.issue-card.severity-medium { border-left-color: var(--accent-orange); }
+.issue-card.severity-low { border-left-color: var(--accent-blue); }
+
+.issue-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.issue-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.issue-field {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.issue-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.issue-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.issue-value-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.issue-value-text {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text-primary);
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.issue-value-text.highlight {
+  border-color: var(--ey-yellow);
+  box-shadow: 0 0 0 1px rgba(255, 230, 0, 0.15);
+}
+
+/* ==============================================
+   DELETE-ALL PROGRESS
+   ============================================== */
+
+.delete-progress-track {
+  width: 100%;
+  height: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.delete-progress-bar {
+  width: 10%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--ey-yellow), var(--accent-orange));
+  transition: width 0.25s ease;
+}
+
+.delete-progress-text {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* ==============================================
    LOADING STATES
    ============================================== */
 

@@ -49,6 +49,77 @@ router.get("/:id/issues", async (req, res) => {
   res.json({ issues: data });
 });
 
+// DELETE /api/providers/delete-all - delete all providers and related data
+router.delete('/delete-all', async (req, res) => {
+  try {
+    console.log('Delete all providers request received');
+    
+    // Get all provider IDs first
+    const { data: allProviders, error: fetchErr } = await supabase
+      .from('providers')
+      .select('id');
+
+    if (fetchErr) {
+      console.error('Failed to fetch providers:', fetchErr.message || fetchErr);
+      return res.status(500).json({ error: 'Could not fetch providers' });
+    }
+
+    console.log(`Found ${allProviders?.length || 0} providers to delete`);
+
+    if (!allProviders || allProviders.length === 0) {
+      // No providers to delete
+      console.log('No providers to delete');
+      return res.json({ success: true, deleted: 0 });
+    }
+
+    const providerIds = allProviders.map(p => p.id);
+    console.log('Provider IDs to delete:', providerIds.length);
+
+    // Delete all validation issues for all providers
+    const { error: issuesErr } = await supabase
+      .from('validation_issues')
+      .delete()
+      .in('provider_id', providerIds);
+
+    if (issuesErr) {
+      console.error('Failed to delete all validation issues:', issuesErr.message || issuesErr);
+      return res.status(500).json({ error: 'Could not delete validation issues' });
+    }
+
+    console.log('Deleted validation issues');
+
+    // Delete all provider sources
+    const { error: sourcesErr } = await supabase
+      .from('provider_sources')
+      .delete()
+      .in('provider_id', providerIds);
+
+    if (sourcesErr) {
+      console.error('Failed to delete all provider sources:', sourcesErr.message || sourcesErr);
+      return res.status(500).json({ error: 'Could not delete provider sources' });
+    }
+
+    console.log('Deleted provider sources');
+
+    // Delete all providers
+    const { error: providersErr } = await supabase
+      .from('providers')
+      .delete()
+      .in('id', providerIds);
+
+    if (providersErr) {
+      console.error('Failed to delete all providers:', providersErr.message || providersErr);
+      return res.status(500).json({ error: 'Could not delete providers' });
+    }
+
+    console.log(`Successfully deleted ${providerIds.length} providers`);
+    res.json({ success: true, deleted: providerIds.length });
+  } catch (err) {
+    console.error('Unexpected error deleting all providers:', err);
+    res.status(500).json({ error: 'Unexpected error deleting providers' });
+  }
+});
+
 // DELETE /api/providers/:id - remove provider and related data
 router.delete('/:id', async (req, res) => {
   const providerId = req.params.id;
@@ -88,66 +159,6 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     console.error('Unexpected error deleting provider', providerId, err);
     res.status(500).json({ error: 'Unexpected error deleting provider' });
-  }
-});
-
-// DELETE /api/providers/delete-all - delete all providers and related data
-router.delete('/delete-all', async (req, res) => {
-  try {
-    // Get all provider IDs first
-    const { data: allProviders, error: fetchErr } = await supabase
-      .from('providers')
-      .select('id');
-
-    if (fetchErr) {
-      console.error('Failed to fetch providers:', fetchErr.message || fetchErr);
-      return res.status(500).json({ error: 'Could not fetch providers' });
-    }
-
-    if (!allProviders || allProviders.length === 0) {
-      // No providers to delete
-      return res.status(204).send();
-    }
-
-    const providerIds = allProviders.map(p => p.id);
-
-    // Delete all validation issues for all providers
-    const { error: issuesErr } = await supabase
-      .from('validation_issues')
-      .delete()
-      .in('provider_id', providerIds);
-
-    if (issuesErr) {
-      console.error('Failed to delete all validation issues:', issuesErr.message || issuesErr);
-      return res.status(500).json({ error: 'Could not delete validation issues' });
-    }
-
-    // Delete all provider sources
-    const { error: sourcesErr } = await supabase
-      .from('provider_sources')
-      .delete()
-      .in('provider_id', providerIds);
-
-    if (sourcesErr) {
-      console.error('Failed to delete all provider sources:', sourcesErr.message || sourcesErr);
-      return res.status(500).json({ error: 'Could not delete provider sources' });
-    }
-
-    // Delete all providers
-    const { error: providersErr } = await supabase
-      .from('providers')
-      .delete()
-      .in('id', providerIds);
-
-    if (providersErr) {
-      console.error('Failed to delete all providers:', providersErr.message || providersErr);
-      return res.status(500).json({ error: 'Could not delete providers' });
-    }
-
-    res.status(204).send();
-  } catch (err) {
-    console.error('Unexpected error deleting all providers:', err);
-    res.status(500).json({ error: 'Unexpected error deleting providers' });
   }
 });
 
