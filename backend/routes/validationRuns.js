@@ -94,6 +94,43 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// POST /api/validation-runs/:id/toggle-star - toggle star status for a run
+router.post('/:id/toggle-star', async (req, res) => {
+  const runId = req.params.id;
+
+  try {
+    // First, get the current star status
+    const { data: run, error: selectErr } = await supabase
+      .from('validation_runs')
+      .select('is_starred')
+      .eq('id', runId)
+      .single();
+
+    if (selectErr) {
+      console.error('Failed to fetch run', runId, selectErr.message || selectErr);
+      return res.status(500).json({ error: 'Could not fetch run' });
+    }
+
+    // Toggle the is_starred value
+    const newStarStatus = !run.is_starred;
+
+    const { error: updateErr } = await supabase
+      .from('validation_runs')
+      .update({ is_starred: newStarStatus })
+      .eq('id', runId);
+
+    if (updateErr) {
+      console.error('Failed to update run star status', runId, updateErr.message || updateErr);
+      return res.status(500).json({ error: 'Could not update star status' });
+    }
+
+    res.json({ is_starred: newStarStatus });
+  } catch (err) {
+    console.error('Unexpected error toggling star status', runId, err);
+    res.status(500).json({ error: 'Unexpected error toggling star' });
+  }
+});
+
 // GET /api/validation-runs/:id/issues - return issues associated with a run
 router.get('/:id/issues', async (req, res) => {
   const runId = req.params.id;

@@ -91,6 +91,66 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// DELETE /api/providers/delete-all - delete all providers and related data
+router.delete('/delete-all', async (req, res) => {
+  try {
+    // Get all provider IDs first
+    const { data: allProviders, error: fetchErr } = await supabase
+      .from('providers')
+      .select('id');
+
+    if (fetchErr) {
+      console.error('Failed to fetch providers:', fetchErr.message || fetchErr);
+      return res.status(500).json({ error: 'Could not fetch providers' });
+    }
+
+    if (!allProviders || allProviders.length === 0) {
+      // No providers to delete
+      return res.status(204).send();
+    }
+
+    const providerIds = allProviders.map(p => p.id);
+
+    // Delete all validation issues for all providers
+    const { error: issuesErr } = await supabase
+      .from('validation_issues')
+      .delete()
+      .in('provider_id', providerIds);
+
+    if (issuesErr) {
+      console.error('Failed to delete all validation issues:', issuesErr.message || issuesErr);
+      return res.status(500).json({ error: 'Could not delete validation issues' });
+    }
+
+    // Delete all provider sources
+    const { error: sourcesErr } = await supabase
+      .from('provider_sources')
+      .delete()
+      .in('provider_id', providerIds);
+
+    if (sourcesErr) {
+      console.error('Failed to delete all provider sources:', sourcesErr.message || sourcesErr);
+      return res.status(500).json({ error: 'Could not delete provider sources' });
+    }
+
+    // Delete all providers
+    const { error: providersErr } = await supabase
+      .from('providers')
+      .delete()
+      .in('id', providerIds);
+
+    if (providersErr) {
+      console.error('Failed to delete all providers:', providersErr.message || providersErr);
+      return res.status(500).json({ error: 'Could not delete providers' });
+    }
+
+    res.status(204).send();
+  } catch (err) {
+    console.error('Unexpected error deleting all providers:', err);
+    res.status(500).json({ error: 'Unexpected error deleting providers' });
+  }
+});
+
 // POST /api/providers/add-by-npi - Add provider by NPI and run validation
 router.post('/add-by-npi', async (req, res) => {
   const { npi } = req.body;

@@ -27,7 +27,7 @@ async function refreshRunNeedsReviewCount(runId) {
   }
 }
 
-router.post(":id/accept", async (req, res) => {
+router.post("/:id/accept", async (req, res) => {
   const { data: issue } = await supabase
     .from("validation_issues")
     .select("*")
@@ -54,7 +54,7 @@ router.post(":id/accept", async (req, res) => {
   res.json({ message: "Update applied" });
 });
 
-router.post(":id/reject", async (req, res) => {
+router.post("/:id/reject", async (req, res) => {
   const { data: issue } = await supabase
     .from("validation_issues")
     .select("run_id")

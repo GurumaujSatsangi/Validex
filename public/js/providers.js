@@ -65,6 +65,66 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
+// Delete all providers button handler
+document.getElementById('deleteAllProvidersBtn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('deleteAllProvidersBtn');
+  const confirmed = await Swal.fire({
+    icon: 'warning',
+    title: 'Delete All Providers?',
+    html: '<p>This will permanently delete <strong>all providers</strong> and their associated validation data.</p><p class="text-danger"><strong>This action cannot be undone.</strong></p>',
+    showCancelButton: true,
+    confirmButtonText: 'Delete All',
+    confirmButtonColor: '#dc3545',
+    cancelButtonText: 'Cancel'
+  });
+
+  if (!confirmed.isConfirmed) return;
+
+  btn.disabled = true;
+  
+  try {
+    Swal.fire({
+      title: 'Deleting...',
+      html: '<div class="spinner-border text-danger" role="status"><span class="visually-hidden">Deleting...</span></div>',
+      allowOutsideClick: false,
+      showConfirmButton: false
+    });
+
+    const res = await fetch('/api/providers/delete-all', { method: 'DELETE' });
+    
+    if (!res.ok) {
+      const json = await res.json();
+      Swal.close();
+      Swal.fire({
+        icon: 'error',
+        title: 'Delete Failed',
+        text: json?.error || 'Could not delete providers'
+      });
+      btn.disabled = false;
+      return;
+    }
+
+    Swal.close();
+    Swal.fire({
+      icon: 'success',
+      title: 'All Providers Deleted',
+      text: 'All providers have been removed.',
+      confirmButtonColor: '#333333'
+    }).then(() => {
+      loadProviders();
+      btn.disabled = false;
+    });
+  } catch (err) {
+    Swal.close();
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: err?.message || String(err)
+    });
+    btn.disabled = false;
+  }
+});
+
 // Delegate click for view buttons
 document.addEventListener('click', (ev) => {
   const btn = ev.target.closest('.view-provider-btn');
