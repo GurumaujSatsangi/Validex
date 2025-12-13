@@ -4,136 +4,147 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Add Provider by NPI - TrueLens</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-  <style>
-    body {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .add-provider-card {
-      background: white;
-      border-radius: 15px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-      max-width: 600px;
-      width: 100%;
-      margin: 20px;
-    }
-    .card-header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border-radius: 15px 15px 0 0 !important;
-      padding: 25px;
-    }
-    .npi-input {
-      font-size: 1.2rem;
-      padding: 15px;
-      text-align: center;
-      letter-spacing: 2px;
-      font-family: 'Courier New', monospace;
-    }
-    .btn-add-provider {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border: none;
-      padding: 15px 40px;
-      font-size: 1.1rem;
-      font-weight: 600;
-      letter-spacing: 1px;
-    }
-    .btn-add-provider:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-    }
-    .alert {
-      border-radius: 10px;
-    }
-    .info-section {
-      background: #f8f9fa;
-      border-radius: 10px;
-      padding: 20px;
-      margin-top: 20px;
-    }
-    .loading-spinner {
-      display: none;
-    }
-    .loading-spinner.active {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-  </style>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/css/styles.css" rel="stylesheet">
 </head>
 <body>
-  <div class="add-provider-card">
-    <div class="card-header">
-      <h2 class="mb-0"><i class="bi bi-person-plus-fill me-2"></i>Add Provider by NPI</h2>
-      <p class="mb-0 mt-2 opacity-75">Enter a 10-digit NPI to fetch and validate provider information</p>
-    </div>
-    <div class="card-body p-4">
-      
-      <form id="addProviderForm">
-        <div class="mb-4">
-          <label for="npiInput" class="form-label fw-bold">NPI Number</label>
-          <input 
-            type="text" 
-            class="form-control npi-input" 
-            id="npiInput" 
-            placeholder="1234567890" 
-            maxlength="10"
-            pattern="[0-9]{10}"
-            required
-          >
-          <div class="form-text">Enter exactly 10 digits</div>
-        </div>
-
-        <div class="d-grid">
-          <button type="submit" class="btn btn-primary btn-add-provider">
-            <i class="bi bi-search me-2"></i>Fetch & Validate Provider
-          </button>
-        </div>
-      </form>
-
-      <div class="loading-spinner" id="loadingSpinner">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-        <span class="ms-3">Fetching provider data and starting validation...</span>
-      </div>
-
-      <div id="alertContainer" class="mt-4"></div>
-
-      <div class="info-section">
-        <h6 class="fw-bold mb-3"><i class="bi bi-info-circle me-2"></i>What happens next?</h6>
-        <ol class="mb-0">
-          <li class="mb-2">Provider details are fetched from NPI Registry</li>
-          <li class="mb-2">Provider record is created in TrueLens database</li>
-          <li class="mb-2">Full validation workflow runs automatically:
-            <ul>
-              <li>NPI data validation</li>
-              <li>Azure Maps address verification</li>
-              <li>Web scraping for additional information</li>
-              <li>Quality assurance checks</li>
-            </ul>
-          </li>
-          <li class="mb-2">Admin email summary sent to <strong>gurumaujsatsangi@gmail.com</strong></li>
-          <li>If discrepancies found, provider receives verification email</li>
-        </ol>
-      </div>
-
-      <div class="mt-4 text-center">
-        <a href="/" class="btn btn-outline-secondary">
-          <i class="bi bi-arrow-left me-2"></i>Back to Home
+  <div class="dashboard-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <a href="/" class="sidebar-logo">
+          <i class="bi bi-check-circle-fill"></i>
+          <span>TrueLens</span>
         </a>
       </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">Main</div>
+          <a href="/" class="nav-item">
+            <i class="bi bi-grid-fill"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="/upload" class="nav-item active">
+            <i class="bi bi-cloud-arrow-up"></i>
+            <span>Upload</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Data</div>
+          <a href="/providers" class="nav-item">
+            <i class="bi bi-people-fill"></i>
+            <span>Providers</span>
+          </a>
+          <a href="/runs" class="nav-item">
+            <i class="bi bi-play-circle-fill"></i>
+            <span>Validation Runs</span>
+          </a>
+        </div>
+      </nav>
+    </aside>
 
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Top Bar -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <div>
+            <div class="topbar-title">Add Provider by NPI</div>
+            <div class="topbar-subtitle">Fetch and validate provider from NPI Registry</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <a href="/upload" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Upload
+          </a>
+          <div class="topbar-time">
+            <i class="bi bi-clock"></i> <span id="currentTime"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Content Area -->
+      <div class="content-area">
+        <div style="max-width: 800px; margin: 0 auto;">
+          <!-- NPI Form Card -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="bi bi-person-plus-fill"></i>
+                Enter NPI Number
+              </div>
+            </div>
+            <div class="card-body">
+              <form id="addProviderForm">
+                <div class="form-group">
+                  <label for="npiInput">NPI Number</label>
+                  <input 
+                    type="text" 
+                    class="form-control" 
+                    id="npiInput" 
+                    placeholder="1234567890" 
+                    maxlength="10"
+                    pattern="[0-9]{10}"
+                    required
+                    style="font-size: 1.2rem; text-align: center; letter-spacing: 2px; font-family: 'Courier New', monospace;"
+                  >
+                  <div class="form-text">Enter exactly 10 digits</div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">
+                  <i class="bi bi-search"></i> Fetch & Validate Provider
+                </button>
+              </form>
+
+              <div class="loading-spinner" id="loadingSpinner" style="display: none; padding: 20px;">
+                <div class="spinner"></div>
+                <span style="margin-left: 12px; color: var(--text-secondary);">Fetching provider data and starting validation...</span>
+              </div>
+
+              <div id="alertContainer" style="margin-top: 20px;"></div>
+            </div>
+          </div>
+
+          <!-- Info Card -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="bi bi-info-circle-fill"></i>
+                What happens next?
+              </div>
+            </div>
+            <div class="card-body">
+              <ol style="margin-left: 20px;">
+                <li style="margin-bottom: 12px;">Provider details are fetched from NPI Registry</li>
+                <li style="margin-bottom: 12px;">Provider record is created in TrueLens database</li>
+                <li style="margin-bottom: 12px;">Full validation workflow runs automatically:
+                  <ul style="margin-top: 8px;">
+                    <li>NPI data validation</li>
+                    <li>Azure Maps address verification</li>
+                    <li>Web scraping for additional information</li>
+                    <li>Quality assurance checks</li>
+                  </ul>
+                </li>
+                <li style="margin-bottom: 12px;">Admin email summary sent to <strong>gurumaujsatsangi@gmail.com</strong></li>
+                <li>If discrepancies found, provider receives verification email</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
   <script>
+    // Update time
+    function updateTime() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('currentTime').textContent = timeStr;
+    }
+    updateTime();
+    setInterval(updateTime, 60000);
+
     const form = document.getElementById('addProviderForm');
     const npiInput = document.getElementById('npiInput');
     const alertContainer = document.getElementById('alertContainer');
@@ -158,7 +169,7 @@
       alertContainer.innerHTML = '';
       
       // Show loading
-      loadingSpinner.classList.add('active');
+      loadingSpinner.style.display = 'flex';
       form.querySelector('button[type="submit"]').disabled = true;
 
       try {
@@ -172,34 +183,30 @@
 
         const data = await response.json();
 
-        loadingSpinner.classList.remove('active');
+        loadingSpinner.style.display = 'none';
         form.querySelector('button[type="submit"]').disabled = false;
 
         if (response.ok && data.success) {
           showAlert('success', `
             <strong>Success!</strong> Provider "${escapeHtml(data.providerName)}" has been added.<br>
-            <small>Provider ID: ${escapeHtml(data.providerId)}</small><br>
-            <small>NPI: ${escapeHtml(data.npi)}</small><br><br>
-            <strong>Validation is running...</strong><br>
-            An email summary will be sent to <strong>gurumaujsatsangi@gmail.com</strong> when complete.
+            <div style="margin-top: 8px;">Provider ID: <code>${escapeHtml(data.providerId)}</code></div>
+            <div>NPI: <code>${escapeHtml(data.npi)}</code></div>
+            <div style="margin-top: 12px;"><strong>Validation is running...</strong></div>
+            <div style="font-size: 0.875rem; margin-top: 4px;">An email summary will be sent to <strong>gurumaujsatsangi@gmail.com</strong> when complete.</div>
+            <a href="/provider/${data.providerId}" class="btn btn-sm btn-info" style="margin-top: 12px;">
+              <i class="bi bi-eye"></i> View Provider Details
+            </a>
           `);
           npiInput.value = '';
-          
-          // Add link to view provider
-          setTimeout(() => {
-            const viewLink = document.createElement('a');
-            viewLink.href = `/provider/${data.providerId}`;
-            viewLink.className = 'btn btn-sm btn-primary mt-2';
-            viewLink.innerHTML = '<i class="bi bi-eye me-2"></i>View Provider Details';
-            alertContainer.querySelector('.alert').appendChild(viewLink);
-          }, 500);
           
         } else if (response.status === 409) {
           // Provider already exists
           showAlert('warning', `
             <strong>Provider Already Exists</strong><br>
-            Provider "${escapeHtml(data.providerName)}" with NPI ${npi} is already in the system.<br>
-            <a href="/provider/${data.providerId}" class="alert-link">View existing provider</a>
+            <div style="margin-top: 8px;">Provider "${escapeHtml(data.providerName)}" with NPI ${npi} is already in the system.</div>
+            <a href="/provider/${data.providerId}" class="btn btn-sm btn-info" style="margin-top: 12px;">
+              <i class="bi bi-eye"></i> View Existing Provider
+            </a>
           `);
         } else {
           showAlert('danger', `<strong>Error:</strong> ${escapeHtml(data.error || 'Failed to add provider')}`);
@@ -207,7 +214,7 @@
 
       } catch (err) {
         console.error('Error:', err);
-        loadingSpinner.classList.remove('active');
+        loadingSpinner.style.display = 'none';
         form.querySelector('button[type="submit"]').disabled = false;
         showAlert('danger', '<strong>Network Error:</strong> Failed to connect to server. Please try again.');
       }
@@ -215,9 +222,9 @@
 
     function showAlert(type, message) {
       alertContainer.innerHTML = `
-        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-          ${message}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="alert alert-${type}">
+          <i class="bi bi-${type === 'success' ? 'check-circle-fill' : type === 'warning' ? 'exclamation-triangle-fill' : 'exclamation-circle-fill'}"></i>
+          <div style="flex: 1;">${message}</div>
         </div>
       `;
     }
@@ -233,6 +240,5 @@
       return String(text || '').replace(/[&<>"']/g, m => map[m]);
     }
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

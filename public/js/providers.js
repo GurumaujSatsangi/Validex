@@ -5,7 +5,7 @@ async function loadProviders(){
     const container = document.getElementById('providersContainer');
     
     if (!json.providers || json.providers.length === 0) {
-      container.innerHTML = '<div class="alert alert-info" role="alert"><i class="bi bi-info-circle"></i> No providers found. <a href="/upload">Upload a CSV</a> to get started.</div>';
+      container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle"></i> <div style="flex: 1;">No providers found. <a href="/upload">Upload a CSV</a> to get started.</div></div>';
       return;
     }
 
@@ -13,14 +13,14 @@ async function loadProviders(){
       const nameText = escapeHtml(p.name || '');
       return `
         <tr>
-          <td><a href="/provider/${p.id}" class="text-decoration-none">${nameText}</a></td>
+          <td><a href="/provider/${p.id}">${nameText}</a></td>
           <td>${escapeHtml(p.phone || '')}</td>
           <td>${escapeHtml(p.email || '')}</td>
           <td>${escapeHtml(p.city || '')}</td>
           <td>${escapeHtml(p.state || '')}</td>
-          <td><span class="badge bg-secondary">${p.issues_count ?? 0}</span></td>
+          <td><span class="badge">${p.issues_count ?? 0}</span></td>
           <td>
-            <div class="d-flex gap-2">
+            <div style="display: flex; gap: 8px;">
               <button class="btn btn-sm btn-info view-provider-btn" data-id="${p.id}"><i class="bi bi-eye"></i> View</button>
               <button class="btn btn-sm btn-outline-danger delete-provider-btn" data-id="${p.id}"><i class="bi bi-trash"></i> Delete</button>
             </div>
@@ -29,8 +29,8 @@ async function loadProviders(){
     }).join('');
 
     const html = `
-      <table class="table table-hover table-striped">
-        <thead class="table-light">
+      <table>
+        <thead>
           <tr>
             <th>Name</th>
             <th>Phone</th>
@@ -50,7 +50,7 @@ async function loadProviders(){
     container.innerHTML = html;
   } catch (err) {
     console.error('Error loading providers:', err);
-    document.getElementById('providersContainer').innerHTML = '<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i> Error loading providers</div>';
+    document.getElementById('providersContainer').innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> <div style="flex: 1;">Error loading providers</div></div>';
   }
 }
 
