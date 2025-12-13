@@ -1,6 +1,8 @@
 import { supabase } from "../../supabaseClient.js";
 import { searchBusinessWithAzure } from "../tools/mapsClient.js";
 import { scrapeProviderInfo } from "../tools/webScraper.js";
+import { scrapeTrueLensWebsite } from "../tools/trueLensWebsiteScraper.js";
+import { scrapeNPICertifications } from "../tools/npiCertificationsScraper.js";
 
 export async function runInfoEnrichment(provider) {
   // ===============================================
@@ -27,7 +29,51 @@ export async function runInfoEnrichment(provider) {
   }
 
   // ===============================================
-  // STEP 2: WEB SCRAPING (run for all providers to collect richer info)
+  // STEP 2: TRUELENS WEBSITE SCRAPING
+  // ===============================================
+  console.info("[Info Enrichment] Scraping TrueLens website for", provider.name);
+  const trueLensData = await scrapeTrueLensWebsite(provider.name);
+  
+  if (trueLensData && trueLensData.isFound) {
+    try {
+      const { error } = await supabase.from("provider_sources").insert({
+        provider_id: provider.id,
+        source_type: "TRUELENS_WEBSITE",
+        raw_data: trueLensData
+      });
+      if (error) {
+        console.error("Failed to insert TRUELENS_WEBSITE source:", error.message);
+      }
+    } catch (err) {
+      console.error("Error inserting TRUELENS_WEBSITE source:", err);
+    }
+  }
+
+  // ===============================================
+  // STEP 3: NPI CERTIFICATIONS SCRAPING
+  // ===============================================
+  if (provider.npi_id) {
+    console.info("[Info Enrichment] Scraping NPI certifications for NPI:", provider.npi_id);
+    const npiCertData = await scrapeNPICertifications(provider.npi_id, provider.name);
+    
+    if (npiCertData && npiCertData.isFound) {
+      try {
+        const { error } = await supabase.from("provider_sources").insert({
+          provider_id: provider.id,
+          source_type: "NPI_CERTIFICATIONS",
+          raw_data: npiCertData
+        });
+        if (error) {
+          console.error("Failed to insert NPI_CERTIFICATIONS source:", error.message);
+        }
+      } catch (err) {
+        console.error("Error inserting NPI_CERTIFICATIONS source:", err);
+      }
+    }
+  }
+
+  // ===============================================
+  // STEP 4: WEB SCRAPING (run for all providers to collect richer info)
   // ===============================================
   let scrapedData = null;
 

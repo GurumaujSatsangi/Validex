@@ -374,6 +374,202 @@ export async function runQualityAssurance(provider, runId) {
     }
   }
 
+  // Check TrueLens Website scraping data
+  const trueLensSource = sources.find(s => s.source_type === "TRUELENS_WEBSITE");
+  if (trueLensSource && trueLensSource.raw_data && trueLensSource.raw_data.isFound) {
+    const webData = trueLensSource.raw_data.data;
+    
+    // Phone Number
+    if (webData.phone && !suggested.phone && normalizePhone(webData.phone) !== normalizePhone(provider.phone)) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.7, phoneScore: 0 });
+      
+      suggested.phone = {
+        oldValue: provider.phone || 'Not available',
+        suggestedValue: webData.phone,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // Address
+    if (webData.address && !suggested.address_line1) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const addrScore = addressSimilarity(provider.address_line1, webData.address);
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
+      
+      suggested.address_line1 = {
+        oldValue: provider.address_line1 || 'Not available',
+        suggestedValue: webData.address,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // Specialty
+    if (webData.specialty && !suggested.speciality && normalizeSpecialty(webData.specialty) !== normalizeSpecialty(provider.speciality)) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.7, phoneScore: 0 });
+      
+      suggested.speciality = {
+        oldValue: provider.speciality || 'Not available',
+        suggestedValue: webData.specialty,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // License Number
+    if (webData.license_number && webData.license_number !== provider.license_number) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.7, phoneScore: 0 });
+      
+      suggested.license_number = {
+        oldValue: provider.license_number || 'Not available',
+        suggestedValue: webData.license_number,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // License State
+    if (webData.license_state) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.7, phoneScore: 0 });
+      
+      suggested.license_state = {
+        oldValue: provider.license_state || 'Not available',
+        suggestedValue: webData.license_state,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // License Status
+    if (webData.license_status) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.7, phoneScore: 0 });
+      
+      suggested.license_status = {
+        oldValue: provider.license_status || 'Not available',
+        suggestedValue: webData.license_status,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // Office Hours
+    if (webData.office_hours) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.6, phoneScore: 0 });
+      
+      suggested.office_hours = {
+        oldValue: 'Not available',
+        suggestedValue: webData.office_hours,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // Accepting New Patients
+    if (webData.accepting_new_patients !== undefined) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.6, phoneScore: 0 });
+      
+      suggested.accepting_new_patients = {
+        oldValue: 'Not available',
+        suggestedValue: webData.accepting_new_patients ? 'Yes' : 'No',
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // Telehealth Available
+    if (webData.telehealth_available !== undefined) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.6, phoneScore: 0 });
+      
+      suggested.telehealth_available = {
+        oldValue: 'Not available',
+        suggestedValue: webData.telehealth_available ? 'Yes' : 'No',
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+    
+    // Affiliations
+    if (webData.affiliations) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.5, phoneScore: 0 });
+      
+      suggested.affiliations = {
+        oldValue: 'Not available',
+        suggestedValue: webData.affiliations,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+  }
+
+  // Check NPI Certifications data
+  const npiCertSource = sources.find(s => s.source_type === "NPI_CERTIFICATIONS");
+  if (npiCertSource && npiCertSource.raw_data && npiCertSource.raw_data.isFound) {
+    const certData = npiCertSource.raw_data;
+    
+    // Primary Certification/Specialty
+    if (certData.specialty && normalizeSpecialty(certData.specialty) !== normalizeSpecialty(provider.speciality)) {
+      const srcScore = sourceWeightedVote({ npi: true, azure: false, scrape: false, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.8, phoneScore: 0 });
+      
+      if (!suggested.speciality) {
+        suggested.speciality = {
+          oldValue: provider.speciality || 'Not available',
+          suggestedValue: certData.specialty,
+          confidence,
+          sourceType: "NPI_CERTIFICATIONS",
+          action: determineAction(confidence),
+          severity: determineSeverity(confidence)
+        };
+      }
+    }
+    
+    // Single certification field - show primary or first certification
+    if (certData.certifications && certData.certifications.length > 0) {
+      const primaryCert = certData.certifications.find(c => c.isPrimary) || certData.certifications[0];
+      const srcScore = sourceWeightedVote({ npi: true, azure: false, scrape: false, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.8, phoneScore: 0 });
+      
+      suggested.certification = {
+        oldValue: 'Not available',
+        suggestedValue: primaryCert.name + (primaryCert.license ? ` (License: ${primaryCert.license})` : ''),
+        confidence,
+        sourceType: "NPI_CERTIFICATIONS",
+        action: determineAction(confidence),
+        severity: determineSeverity(confidence)
+      };
+    }
+  }
+
   // Prepare issue rows for bulk insert
   const issueRows = Object.entries(suggested).map(([fieldName, s]) => ({
     provider_id: provider.id,
