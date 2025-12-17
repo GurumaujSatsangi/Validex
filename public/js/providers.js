@@ -249,7 +249,7 @@ document.getElementById('downloadCsvBtn')?.addEventListener('click', async () =>
     
     const timestamp = new Date().toISOString().split('T')[0];
     link.setAttribute('href', url);
-    link.setAttribute('download', `truelens_providers_${timestamp}.csv`);
+    link.setAttribute('download', `validex_providers_${timestamp}.csv`);
     link.style.visibility = 'hidden';
     
     document.body.appendChild(link);
