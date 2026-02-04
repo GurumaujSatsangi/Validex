@@ -62,16 +62,55 @@ export async function scrapeTrueLensWebsite(providerName) {
     });
     
     console.log(`[TrueLens Website] Found ${providers.length} providers`);
-    if (providers.length > 0) {
-      console.log(`[TrueLens Website] Sample:`, providers[0].name, '|', providers[0].phone);
+    
+    // Search for matching provider by name (fuzzy match with strict requirements)
+    const normalizedSearchName = providerName.toLowerCase().trim();
+    
+    // Try exact match first
+    let matchedProvider = providers.find(p => 
+      p.name.toLowerCase().trim() === normalizedSearchName
+    );
+    
+    // If no exact match, try partial match (all parts must be present)
+    if (!matchedProvider) {
+      matchedProvider = providers.find(p => {
+        const providerNameLower = p.name.toLowerCase();
+        // Split and filter out very short parts and common titles
+        const commonTitles = ['dr', 'md', 'do', 'pa', 'np', 'rn', 'mr', 'ms', 'mrs'];
+        const searchNameParts = normalizedSearchName
+          .split(/\s+/)
+          .filter(part => part.length > 2 && !commonTitles.includes(part));
+        
+        // Require at least 2 significant parts and ALL must match
+        if (searchNameParts.length < 2) return false;
+        return searchNameParts.every(part => providerNameLower.includes(part));
+      });
     }
     
-    // Always return first provider for demo purposes (since names don't match)
-    if (providers.length > 0) {
-      console.log(`[TrueLens Website] Returning first provider for demo: ${providers[0].name}`);
-      return { isFound: true, data: providers[0] };
+    // If still no match, try reverse (provider name parts in search name) - very strict
+    if (!matchedProvider) {
+      matchedProvider = providers.find(p => {
+        const commonTitles = ['dr', 'md', 'do', 'pa', 'np', 'rn', 'mr', 'ms', 'mrs'];
+        const providerNameParts = p.name.toLowerCase()
+          .split(/\s+/)
+          .filter(part => part.length > 3 && !commonTitles.includes(part)); // Require 4+ chars
+        
+        const matchCount = providerNameParts.filter(part => 
+          normalizedSearchName.includes(part)
+        ).length;
+        
+        // Require at least 3 parts and all must match, or 2 parts and both must match
+        const requiredMatches = providerNameParts.length >= 3 ? providerNameParts.length : 2;
+        return providerNameParts.length >= 2 && matchCount >= requiredMatches;
+      });
     }
     
+    if (matchedProvider) {
+      console.log(`[TrueLens Website] ✓ Found match: ${matchedProvider.name}`);
+      return { isFound: true, data: matchedProvider };
+    }
+    
+    console.log(`[TrueLens Website] ✗ No match found for: ${providerName}`);
     return { isFound: false };
   } catch (error) {
     console.error('[TrueLens Website] Error:', error.message);

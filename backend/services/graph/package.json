@@ -1,0 +1,43 @@
+{
+  "name": "truelens-langgraph-validation",
+  "version": "1.0.0",
+  "description": "LangGraph-based provider validation workflow for TrueLens healthcare platform",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "workflow": "node services/graph/examples.js",
+    "workflow:example1": "node -e \"import('./services/graph/examples.js').then(m => m.exampleBasicExecution())\"",
+    "workflow:example2": "node -e \"import('./services/graph/examples.js').then(m => m.exampleStreamingExecution())\"",
+    "workflow:batch": "node -e \"import('./services/graph/examples.js').then(m => m.exampleBatchProcessing())\"",
+    "test:workflow": "node --experimental-modules services/graph/examples.js"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^0.2.0",
+    "@langchain/core": "^0.3.0",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "ejs": "^3.1.9",
+    "@supabase/supabase-js": "^2.38.4"
+  },
+  "devDependencies": {
+    "eslint": "^8.48.0",
+    "prettier": "^3.0.0"
+  },
+  "keywords": [
+    "langgraph",
+    "provider-validation",
+    "healthcare",
+    "agentic-workflow",
+    "nodejs"
+  ],
+  "author": "TrueLens Healthcare",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/truelens/truelens.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
