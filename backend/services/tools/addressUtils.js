@@ -73,3 +73,45 @@ export function normalizeText(text) {
 export function normalizeAddress(addr) {
   return normalizeAddressComponent(addr);
 }
+
+/**
+ * Validates address format
+ * @param {string} address - Address string
+ * @returns {object} Validation result with isValid and components
+ */
+export function validateAddressFormat(address) {
+  if (!address) {
+    return { isValid: false, components: {} };
+  }
+
+  const components = {
+    zip: extractZip(address),
+    city: extractCity(address),
+    state: extractState(address),
+  };
+
+  const isValid = !!(components.zip && components.state);
+
+  return { isValid, components };
+}
+
+/**
+ * Validates state code
+ * @param {string} state - State abbreviation
+ * @returns {object} Validation result with isValid and code
+ */
+export function validateState(state) {
+  const validStates = [
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
+  ];
+
+  const upperState = state ? state.toUpperCase() : null;
+  const isValid = validStates.includes(upperState);
+
+  return { isValid, code: isValid ? upperState : null };
+}
+

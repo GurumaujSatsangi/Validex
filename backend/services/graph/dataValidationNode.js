@@ -4,10 +4,10 @@
  * website scraping, and phone verification
  */
 
-import { npiClient } from "../tools/npiClient.js";
-import { webScraper } from "../tools/webScraper.js";
-import { phoneUtils } from "../tools/phoneUtils.js";
-import { addressUtils } from "../tools/addressUtils.js";
+import { getNpiDataByNpiId, fetchProviderByNpi } from "../tools/npiClient.js";
+import { scrapeProviderInfo } from "../tools/webScraper.js";
+import { normalizePhone, validatePhoneFormat } from "../tools/phoneUtils.js";
+import { extractZip, extractCity, extractState, normalizeAddressComponent, validateAddressFormat, validateState } from "../tools/addressUtils.js";
 
 /**
  * Fetch and validate against NPI Registry
@@ -22,7 +22,7 @@ async function validateNPI(state) {
       };
     }
 
-    const npiData = await npiClient.lookupNPI(state.inputData.npi);
+    const npiData = await fetchProviderByNpi(state.inputData.npi);
 
     if (!npiData) {
       return {
@@ -109,9 +109,10 @@ async function validateWebsiteData(state) {
       };
     }
 
-    const scrapedData = await webScraper.scrapeProviderWebsite(
-      state.inputData.website
-    );
+    const scrapedData = await scrapeProviderInfo({
+      name: state.inputData.name,
+      website: state.inputData.website,
+    });
 
     if (!scrapedData) {
       return {
@@ -126,8 +127,8 @@ async function validateWebsiteData(state) {
 
     if (
       scrapedData.phone &&
-      !phoneUtils.normalizePhone(state.inputData.phone).includes(
-        phoneUtils.normalizePhone(scrapedData.phone)
+      !normalizePhone(state.inputData.phone).includes(
+        normalizePhone(scrapedData.phone)
       )
     ) {
       discrepancies.push({
@@ -183,8 +184,8 @@ async function validatePhone(state) {
       };
     }
 
-    const normalizedPhone = phoneUtils.normalizePhone(state.inputData.phone);
-    const isValid = phoneUtils.validatePhoneFormat(normalizedPhone);
+    const normalizedPhone = normalizePhone(state.inputData.phone);
+    const isValid = validatePhoneFormat(normalizedPhone);
 
     if (!isValid) {
       return {
@@ -235,10 +236,10 @@ async function validateAddress(state) {
       };
     }
 
-    const addressValidation = addressUtils.validateAddressFormat(
+    const addressValidation = validateAddressFormat(
       state.inputData.address
     );
-    const stateValidation = addressUtils.validateState(state.inputData.state);
+    const stateValidation = validateState(state.inputData.state);
 
     return {
       success: addressValidation.isValid && stateValidation.isValid,

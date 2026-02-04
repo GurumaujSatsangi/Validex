@@ -5,8 +5,8 @@
  * DOES NOT revalidate core data from Data Validation Agent
  */
 
-import { mapsClient } from "../tools/mapsClient.js";
-import { webScraper } from "../tools/webScraper.js";
+import { searchBusinessWithAzure } from "../tools/mapsClient.js";
+import { scrapeProviderInfo } from "../tools/webScraper.js";
 
 /**
  * Search Azure Maps POI to confirm physical location and fetch metadata
@@ -15,7 +15,9 @@ async function enrichFromAzureMapsPOI(state) {
   try {
     const searchQuery = `${state.inputData.name} ${state.inputData.address}`;
 
-    const poiResults = await mapsClient.searchPOI(searchQuery, {
+    const poiResults = await searchBusinessWithAzure({
+      name: state.inputData.name,
+      address: state.inputData.address,
       state: state.inputData.state,
     });
 
@@ -71,14 +73,10 @@ async function enrichFromWebsiteScraping(state) {
       };
     }
 
-    const scrapedContent = await webScraper.scrapeProviderWebsite(
-      state.inputData.website,
-      {
-        extractServices: true,
-        extractTelemedicine: true,
-        extractLanguages: true,
-      }
-    );
+    const scrapedContent = await scrapeProviderInfo({
+      name: state.inputData.name,
+      website: state.inputData.website,
+    });
 
     if (!scrapedContent) {
       return {
