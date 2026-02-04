@@ -18,6 +18,8 @@ import {
   logNodeExecution,
   logWorkflowCompletion,
   exportExecutionTrace,
+  getActiveTraceId,
+  getActiveRunId,
 } from "../tools/langsmithClient.js";
 
 /**
@@ -51,8 +53,8 @@ export function createValidationWorkflow() {
    */
   function createTracedNode(nodeName, originalNode) {
     return async (state) => {
-      const startTime = Date.now();
-      const startTimeISO = new Date().toISOString();
+      const startTimeMs = Date.now();
+      const startTimeISO = new Date(startTimeMs).toISOString();
 
       try {
         // Log node execution start
@@ -65,11 +67,12 @@ export function createValidationWorkflow() {
         const resolvedResult = result instanceof Promise ? await result : result;
 
         // Record execution end
-        const endTime = Date.now();
+        const endTimeMs = Date.now();
+        const durationMs = endTimeMs - startTimeMs;
         const executionRecord = {
           nodeName,
           timestamp: startTimeISO,
-          duration_ms: endTime - startTime,
+          duration_ms: durationMs,
           order: (state.nodeExecutionOrder || []).length + 1,
         };
 
@@ -77,9 +80,9 @@ export function createValidationWorkflow() {
         await logNodeExecution(nodeName, {
           workflowId: state.workflowId,
           providerId: state.providerId,
-          duration: endTime - startTime,
+          duration: durationMs,
           startTime: startTimeISO,
-          endTime: new Date().toISOString(),
+          endTime: new Date(endTimeMs).toISOString(),
           success: true,
         });
 
@@ -99,11 +102,12 @@ export function createValidationWorkflow() {
         console.error(`[LangSmith] Error in node '${nodeName}':`, error.message);
 
         // Record execution end with error
-        const endTime = Date.now();
+        const endTimeMs = Date.now();
+        const durationMs = endTimeMs - startTimeMs;
         const executionRecord = {
           nodeName,
-          timestamp: new Date().toISOString(),
-          duration_ms: endTime - startTime,
+          timestamp: startTimeISO,
+          duration_ms: durationMs,
           order: (state.nodeExecutionOrder || []).length + 1,
           error: error.message,
         };
@@ -357,8 +361,10 @@ export async function executeValidationWorkflow(inputData, options = {}) {
       timeout = 60000,
     } = options;
 
-    // Create LangSmith run
-    await createWorkflowRun(`wf_${Date.now()}`, providerId, inputData);
+    // Create LangSmith run and capture IDs
+    const runInfo = await createWorkflowRun(`wf_${Date.now()}`, providerId, inputData);
+    const runId = runInfo?.id || null;
+    const traceId = runInfo?.traceId || null;
 
     // Initialize workflow
     const workflow = createValidationWorkflow();
@@ -366,6 +372,8 @@ export async function executeValidationWorkflow(inputData, options = {}) {
     // Prepare initial state
     const initialState = {
       providerId,
+      runId,
+      traceId,
       inputData: {
         name: inputData.name || null,
         npi: inputData.npi || null,
@@ -464,14 +472,21 @@ export async function executeValidationWorkflow(inputData, options = {}) {
     // Log execution order summary
     if (finalState && finalState.nodeExecutionOrder) {
       console.log("\n[LangSmith] Workflow Execution Order Summary:");
-      console.log("=".repeat(60));
+      console.log("=".repeat(70));
       finalState.nodeExecutionOrder.forEach((record, index) => {
         console.log(`${index + 1}. ${record.nodeName} (${record.duration_ms}ms) - ${record.timestamp}`);
         if (record.error) {
           console.log(`   ERROR: ${record.error}`);
         }
       });
-      console.log("=".repeat(60));
+      console.log("=".repeat(70));
+
+      // Display run and trace IDs at completion
+      console.log(`\n[LangSmith] Run Complete:`);
+      console.log(`[LangSmith]   Run ID: ${finalState.runId}`);
+      console.log(`[LangSmith]   Trace ID: ${finalState.traceId}`);
+      console.log(`[LangSmith]   Provider ID: ${finalState.providerId}`);
+      console.log(`${`=`.repeat(70)}\n`);
 
       // Log workflow completion to LangSmith
       await logWorkflowCompletion(
@@ -529,10 +544,17 @@ export async function streamValidationWorkflow(
   try {
     const { providerId = `provider_${Date.now()}` } = options;
 
+    // Create LangSmith run and capture IDs
+    const runInfo = await createWorkflowRun(`wf_${Date.now()}`, providerId, inputData);
+    const runId = runInfo?.id || null;
+    const traceId = runInfo?.traceId || null;
+
     const workflow = createValidationWorkflow();
 
     const initialState = {
       providerId,
+      runId,
+      traceId,
       inputData: {
         name: inputData.name || null,
         npi: inputData.npi || null,

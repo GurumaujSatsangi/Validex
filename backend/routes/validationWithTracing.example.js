@@ -37,6 +37,8 @@ router.post("/api/validation/run", async (req, res) => {
       // Return execution trace along with state
       return res.status(200).json({
         success: true,
+        runId: result.state.runId,
+        traceId: result.state.traceId,
         workflowId: result.state.workflowId,
         providerId: result.state.providerId,
         executionTrace: result.executionTrace,
@@ -75,12 +77,14 @@ router.post("/api/validation/stream", async (req, res) => {
     res.setHeader("Connection", "keep-alive");
 
     let stepCount = 0;
+    let finalState = null;
 
     // Stream workflow execution
     await streamValidationWorkflow(
       providerData,
       (step) => {
         stepCount++;
+        finalState = step.state;
 
         // Send SSE message
         res.write(
@@ -97,11 +101,13 @@ router.post("/api/validation/stream", async (req, res) => {
       }
     );
 
-    // Send completion message
+    // Send completion message with run and trace IDs
     res.write(
       `data: ${JSON.stringify({
         complete: true,
         totalSteps: stepCount,
+        runId: finalState?.runId,
+        traceId: finalState?.traceId,
       })}\n\n`
     );
 

@@ -38,7 +38,9 @@ export async function runValidationForImportedProviders(providerIds) {
     }
 
     const runId = run.id;
-    console.info('[Validation Service] Created validation run:', runId);
+    console.info('[Validation Service] Created validation run:');
+    console.info('[Validation Service]   Run ID: ' + runId);
+    console.info('[Validation Service] ' + `=`.repeat(60));
 
     let processed = 0;
     let successCount = 0;
