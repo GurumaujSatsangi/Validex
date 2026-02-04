@@ -77,8 +77,14 @@ export async function runQualityAssurance(provider, runId) {
 
     const npiSpec = npiSource.raw_data.speciality;
     if (npiSpec && normalizeSpecialty(npiSpec) !== normalizeSpecialty(provider.speciality)) {
-      const srcScore = sourceWeightedVote({ npi: true, azure: false, scrape: false, pdf: false });
-      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.5, phoneScore: 0 });
+      const srcScore = sourceWeightedVote({ npi: true });
+      // For speciality from NPI: direct authoritative source, no need for address/phone context
+      const confidence = finalScore({ 
+        sourceScore: srcScore, 
+        addressScore: 0, 
+        phoneScore: 0,
+        hasAuthoritativeSource: true // NPI is official source
+      });
 
       suggested.speciality = {
         oldValue: provider.speciality,
@@ -538,8 +544,14 @@ export async function runQualityAssurance(provider, runId) {
     
     // Primary Certification/Specialty
     if (certData.specialty && normalizeSpecialty(certData.specialty) !== normalizeSpecialty(provider.speciality)) {
-      const srcScore = sourceWeightedVote({ npi: true, azure: false, scrape: false, pdf: false });
-      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.8, phoneScore: 0 });
+      const srcScore = sourceWeightedVote({ npi: true });
+      // For NPI certifications: use full source score, no address/phone dilution
+      const confidence = finalScore({ 
+        sourceScore: srcScore, 
+        addressScore: 0, 
+        phoneScore: 0,
+        hasAuthoritativeSource: true // NPI Certifications is official
+      });
       
       if (!suggested.speciality) {
         suggested.speciality = {
@@ -556,8 +568,17 @@ export async function runQualityAssurance(provider, runId) {
     // Single certification field - show primary or first certification
     if (certData.certifications && certData.certifications.length > 0) {
       const primaryCert = certData.certifications.find(c => c.isPrimary) || certData.certifications[0];
-      const srcScore = sourceWeightedVote({ npi: true, azure: false, scrape: false, pdf: false });
-      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.8, phoneScore: 0 });
+      const srcScore = sourceWeightedVote({ npi: true });
+      
+      // VERY HIGH confidence when license number is present (official certification marker)
+      const hasLicenseNumber = !!primaryCert.license;
+      const confidence = finalScore({ 
+        sourceScore: srcScore, 
+        addressScore: 0, 
+        phoneScore: 0,
+        hasAuthoritativeSource: true, // NPI Certifications is official
+        hasMultipleSources: hasLicenseNumber // License number confirms authenticity
+      });
       
       suggested.certification = {
         oldValue: 'Not available',
@@ -581,7 +602,7 @@ export async function runQualityAssurance(provider, runId) {
     severity: s.severity,
     action: s.action,
     source_type: s.sourceType || "UNKNOWN",
-    status: "OPEN"
+    status: s.action === 'AUTO_ACCEPT' ? 'ACCEPTED' : 'OPEN'
   }));
 
   if (issueRows.length === 0) return { needsReview: false };

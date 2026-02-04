@@ -64,7 +64,7 @@ async function load() {
       issuesSummary.style.display = 'none';
       noIssuesMsg.style.display = 'flex';
     } else {
-      issuesList.style.display = 'flex';
+      issuesList.style.display = 'block';
       issuesSummary.style.display = 'grid';
       noIssuesMsg.style.display = 'none';
       const total = issues.length;
@@ -91,38 +91,42 @@ async function load() {
         </div>
       `;
 
-      issuesList.innerHTML = issues.map(it => {
-        const statusBadgeClass = it.status === 'ACCEPTED' ? 'badge-success' : it.status === 'REJECTED' ? 'badge' : 'badge-warning';
-        const severityBadgeClass = it.severity === 'HIGH' ? 'badge-danger' : it.severity === 'MEDIUM' ? 'badge-warning' : 'badge-info';
-        const severityClass = it.severity === 'HIGH' ? 'severity-high' : it.severity === 'MEDIUM' ? 'severity-medium' : 'severity-low';
-        const confidencePct = it.confidence ? Math.round(it.confidence * 100) : 0;
+      // Create issues table
+      issuesList.innerHTML = `
+        <table class="issues-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Current Value</th>
+              <th>Suggested Value</th>
+              <th>Severity</th>
+              <th>Confidence</th>
+              <th>Status</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${issues.map(it => {
+              const statusBadgeClass = it.status === 'ACCEPTED' ? 'badge-success' : it.status === 'REJECTED' ? 'badge' : 'badge-warning';
+              const severityBadgeClass = it.severity === 'HIGH' ? 'badge-danger' : it.severity === 'MEDIUM' ? 'badge-warning' : 'badge-info';
+              const confidencePct = it.confidence ? Math.round(it.confidence * 100) : 0;
+              const source = it.source || '-';
 
-        return `
-          <div class="issue-card ${severityClass}">
-            <div class="issue-card-header">
-              <div>
-                <div class="issue-label">Field</div>
-                <div class="issue-field">${escapeHtml(it.field_name)}</div>
-              </div>
-              <div class="issue-badges">
-                <span class="badge ${severityBadgeClass}">${escapeHtml(it.severity)}</span>
-                <span class="badge badge-info">${confidencePct}%</span>
-                <span class="badge ${statusBadgeClass}">${escapeHtml(it.status)}</span>
-              </div>
-            </div>
-            <div class="issue-values">
-              <div class="issue-value">
-                <div class="issue-value-label">Current</div>
-                <div class="issue-value-text">${escapeHtml(it.old_value) || '-'}</div>
-              </div>
-              <div class="issue-value">
-                <div class="issue-value-label">Suggested</div>
-                <div class="issue-value-text highlight">${escapeHtml(it.suggested_value) || '-'}</div>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
+              return `
+                <tr>
+                  <td><strong>${escapeHtml(it.field_name)}</strong></td>
+                  <td>${escapeHtml(it.old_value) || '<span class="text-muted">Not available</span>'}</td>
+                  <td class="suggested-value">${escapeHtml(it.suggested_value) || '<span class="text-muted">-</span>'}</td>
+                  <td><span class="badge ${severityBadgeClass}">${escapeHtml(it.severity)}</span></td>
+                  <td><span class="badge badge-info">${confidencePct}%</span></td>
+                  <td><span class="badge ${statusBadgeClass}">${escapeHtml(it.status)}</span></td>
+                  <td><span class="source-badge">${escapeHtml(source)}</span></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
     }
   } catch (err) {
     console.error('Error loading provider:', err);

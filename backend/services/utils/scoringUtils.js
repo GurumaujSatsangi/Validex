@@ -228,14 +228,20 @@ export function sourceWeightedVote(sourceMatches) {
 /**
  * Compute final confidence score using weighted model
  * Combines source score, address score, and phone score
- * @param {Object} scores - { sourceScore, addressScore, phoneScore }
- *                 each is 0–1
+ * @param {Object} scores - { sourceScore, addressScore, phoneScore, hasMultipleSources, hasAuthoritativeSource }
+ *                 each is 0–1 (except boolean flags)
  * @returns {number} - final confidence score 0–1
  */
 export function finalScore(scores) {
   if (!scores || typeof scores !== 'object') return 0;
 
-  const { sourceScore = 0, addressScore = 0, phoneScore = 0 } = scores;
+  const { 
+    sourceScore = 0, 
+    addressScore = 0, 
+    phoneScore = 0,
+    hasMultipleSources = false,
+    hasAuthoritativeSource = false
+  } = scores;
 
   // Clamp all scores to 0–1 range
   const clamped = {
@@ -244,30 +250,47 @@ export function finalScore(scores) {
     phoneScore: Math.max(0, Math.min(1, phoneScore))
   };
 
-  // Weighted final score
-  return (
+  // Base weighted score
+  let finalConfidence = (
     0.5 * clamped.sourceScore +
     0.3 * clamped.addressScore +
     0.2 * clamped.phoneScore
   );
+
+  // Ensure authoritative sources are not diluted by unrelated signals
+  if (hasAuthoritativeSource) {
+    finalConfidence = Math.max(finalConfidence, clamped.sourceScore);
+  }
+
+  // Boost confidence for authoritative sources (NPI, official certifications)
+  if (hasAuthoritativeSource) {
+    finalConfidence = Math.min(1, finalConfidence * 1.3); // 30% boost
+  }
+
+  // Boost confidence when multiple sources agree
+  if (hasMultipleSources) {
+    finalConfidence = Math.min(1, finalConfidence * 1.15); // 15% boost
+  }
+
+  return finalConfidence;
 }
 
 /**
  * Determine action based on confidence score
  * @param {number} confidence - 0–1 score
- * @param {number} threshold - default 0.60
+ * @param {number} threshold - default 0.45 (45%)
  * @returns {string} - "AUTO_ACCEPT" or "NEEDS_REVIEW"
  */
-export function determineAction(confidence, threshold = 0.60) {
+export function determineAction(confidence, threshold = 0.45) {
   return confidence >= threshold ? 'AUTO_ACCEPT' : 'NEEDS_REVIEW';
 }
 
 /**
  * Determine severity based on confidence score
  * @param {number} confidence - 0–1 score
- * @param {number} threshold - default 0.60
+ * @param {number} threshold - default 0.45 (45%)
  * @returns {string} - "HIGH" or "LOW"
  */
-export function determineSeverity(confidence, threshold = 0.60) {
+export function determineSeverity(confidence, threshold = 0.45) {
   return confidence >= threshold ? 'LOW' : 'HIGH';
 }
