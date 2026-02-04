@@ -1,389 +1,156 @@
 /**
- * Quality Assurance Agent
- * Evaluates trustworthiness through confidence scoring, cross-source comparison,
- * and anomaly detection. Decides if human review is needed.
- * DOES NOT fetch new data or scrape - works only with aggregated state.
+ * Quality Assurance Node
+ * LangGraph node that evaluates data quality and calculates confidence scores
+ * - Compares all source data
+ * - Detects conflicts and discrepancies
+ * - Computes weighted confidence score
+ * - Determines if human review is needed
+ * All logic happens inside this node using state data only
  */
 
-/**
- * Compute field-level confidence scores based on source agreement and quality
- */
-function computeFieldConfidenceScores(state) {
-  const scores = {};
-
-  // NPI field confidence
-  if (state.validatedFields.some((f) => f.field === "npi" && f.verified)) {
-    scores.npi = 0.95;
-  } else {
-    scores.npi = 0.0;
-  }
-
-  // License field confidence
-  if (state.validatedFields.some((f) => f.field === "license" && f.verified)) {
-    scores.license = 0.9;
-  } else {
-    scores.license = 0.0;
-  }
-
-  // Phone field confidence (cross-reference multiple sources)
-  const phoneValidations = state.validatedFields.filter(
-    (f) => f.field === "phone"
-  );
-  if (phoneValidations.length > 0) {
-    // Higher confidence if verified from multiple sources
-    scores.phone =
-      0.8 + phoneValidations.length * 0.05;
-  } else {
-    scores.phone = 0.0;
-  }
-
-  // Address field confidence
-  const addressValidations = state.validatedFields.filter(
-    (f) => f.field === "address"
-  );
-  if (addressValidations.length > 0) {
-    scores.address = 0.8 + Math.min(addressValidations.length * 0.05, 0.15);
-  } else {
-    scores.address = 0.0;
-  }
-
-  // Contact details confidence
-  if (state.poiMetadata?.formattedAddress && state.poiMetadata?.phone) {
-    scores.contactDetails = 0.85;
-  } else {
-    scores.contactDetails = 0.6;
-  }
-
-  // Education confidence
-  if (
-    state.educationDetails?.boardCertifications &&
-    state.educationDetails.boardCertifications.length > 0
-  ) {
-    scores.education = 0.9;
-  } else {
-    scores.education = 0.5;
-  }
-
-  // Services and specialties confidence
-  if (
-    state.enrichedProviderProfile?.services &&
-    state.enrichedProviderProfile.services.length > 0
-  ) {
-    scores.services = 0.8;
-  } else {
-    scores.services = 0.4;
-  }
-
-  return scores;
-}
+import { addressesMatch, normalizeText } from "../tools/addressUtils.js";
+import { normalizePhone } from "../tools/phoneUtils.js";
 
 /**
- * Perform cross-source data comparison to detect inconsistencies
- */
-function performCrossSourceComparison(state) {
-  const comparison = {
-    sources: {},
-    inconsistencies: [],
-    consistencyScore: 1.0,
-  };
-
-  // Compare NPI data with other sources
-  if (state.npiLookupResult && state.poiMetadata) {
-    const npiName = state.npiLookupResult.first_name || "";
-    const poiName = state.poiMetadata.businessName || "";
-
-    if (npiName.toLowerCase() !== poiName.toLowerCase()) {
-      comparison.inconsistencies.push({
-        field: "name",
-        source1: "NPI",
-        source2: "POI",
-        value1: npiName,
-        value2: poiName,
-        severity: "MEDIUM",
-      });
-      comparison.consistencyScore -= 0.1;
-    }
-  }
-
-  // Compare website data with POI data
-  if (state.websiteScrapingResult && state.poiMetadata) {
-    const websitePhone = state.websiteScrapingResult.phone || "";
-    const poiPhone = state.poiMetadata.phone || "";
-
-    if (
-      websitePhone.replace(/\D/g, "") !== poiPhone.replace(/\D/g, "")
-    ) {
-      comparison.inconsistencies.push({
-        field: "phone",
-        source1: "WEBSITE",
-        source2: "POI",
-        value1: websitePhone,
-        value2: poiPhone,
-        severity: "LOW",
-      });
-      comparison.consistencyScore -= 0.05;
-    }
-  }
-
-  // Record sources used
-  state.validationSources.forEach((source) => {
-    comparison.sources[source.source] = {
-      fieldsValidated: source.fieldsValidated,
-      timestamp: source.timestamp,
-    };
-  });
-
-  return comparison;
-}
-
-/**
- * Detect anomalies and fraud patterns
- */
-function detectAnomalies(state) {
-  const anomalies = {
-    isDetected: false,
-    patterns: [],
-    fraudRisk: "LOW",
-  };
-
-  // Check for license expiration
-  if (state.educationDetails?.boardCertifications) {
-    const expiredCerts = state.educationDetails.boardCertifications.filter(
-      (cert) => {
-        const expDate = new Date(cert.expirationDate);
-        return expDate < new Date() && !cert.isActive;
-      }
-    );
-
-    if (expiredCerts.length > 0) {
-      anomalies.patterns.push({
-        type: "EXPIRED_CERTIFICATION",
-        count: expiredCerts.length,
-        severity: "HIGH",
-      });
-      anomalies.isDetected = true;
-      anomalies.fraudRisk = "MEDIUM";
-    }
-  }
-
-  // Check for suspicious address patterns
-  if (state.validationDiscrepancies.length > 3) {
-    anomalies.patterns.push({
-      type: "MULTIPLE_ADDRESS_DISCREPANCIES",
-      count: state.validationDiscrepancies.length,
-      severity: "MEDIUM",
-    });
-    anomalies.isDetected = true;
-  }
-
-  // Check for missing critical information
-  const criticalFields = ["npi", "license", "phone", "address"];
-  const missingFields = [];
-
-  for (const field of criticalFields) {
-    if (!state.validatedFields.some((f) => f.field === field && f.verified)) {
-      missingFields.push(field);
-    }
-  }
-
-  if (missingFields.length > 2) {
-    anomalies.patterns.push({
-      type: "MISSING_CRITICAL_FIELDS",
-      fields: missingFields,
-      severity: "HIGH",
-    });
-    anomalies.isDetected = true;
-    anomalies.fraudRisk = "HIGH";
-  }
-
-  // Check for location inconsistencies
-  if (
-    state.geoCoordinates?.latitude &&
-    state.inputData.state &&
-    !isCoordinateInState(
-      state.geoCoordinates.latitude,
-      state.geoCoordinates.longitude,
-      state.inputData.state
-    )
-  ) {
-    anomalies.patterns.push({
-      type: "LOCATION_STATE_MISMATCH",
-      severity: "HIGH",
-    });
-    anomalies.isDetected = true;
-    anomalies.fraudRisk = "MEDIUM";
-  }
-
-  return anomalies;
-}
-
-/**
- * Helper to check if coordinates are within a state (simplified)
- */
-function isCoordinateInState(lat, lon, state) {
-  // In production, use proper geofencing with state boundaries
-  // This is a placeholder
-  return true;
-}
-
-/**
- * Calculate overall confidence score using weighted average
- */
-function calculateOverallConfidenceScore(fieldConfidenceScores) {
-  const weights = {
-    npi: 0.25,
-    license: 0.2,
-    phone: 0.15,
-    address: 0.15,
-    contactDetails: 0.1,
-    education: 0.08,
-    services: 0.07,
-  };
-
-  let totalScore = 0;
-  let totalWeight = 0;
-
-  for (const [field, weight] of Object.entries(weights)) {
-    const score = fieldConfidenceScores[field] || 0;
-    totalScore += score * weight;
-    totalWeight += weight;
-  }
-
-  return totalWeight > 0 ? totalScore / totalWeight : 0;
-}
-
-/**
- * Determine if provider needs human review based on confidence and anomalies
- */
-function determineReviewNeed(state, overallScore, anomalies, comparison) {
-  const needsReview = {
-    decision: false,
-    reasons: [],
-    severity: "LOW",
-    priorityScore: 0,
-  };
-
-  // Rule 1: Low confidence score
-  if (overallScore < 0.7) {
-    needsReview.decision = true;
-    needsReview.reasons.push(
-      `Low overall confidence score: ${(overallScore * 100).toFixed(2)}%`
-    );
-    needsReview.priorityScore += 50;
-  }
-
-  // Rule 2: Anomalies detected
-  if (anomalies.isDetected) {
-    needsReview.decision = true;
-    needsReview.reasons.push("Anomalies detected in provider data");
-    needsReview.priorityScore += 40;
-
-    if (anomalies.fraudRisk === "HIGH") {
-      needsReview.severity = "HIGH";
-      needsReview.priorityScore += 50;
-    } else if (anomalies.fraudRisk === "MEDIUM") {
-      needsReview.severity = "MEDIUM";
-      needsReview.priorityScore += 25;
-    }
-  }
-
-  // Rule 3: Multiple source inconsistencies
-  if (comparison.inconsistencies.length > 2) {
-    needsReview.decision = true;
-    needsReview.reasons.push(
-      `Multiple source inconsistencies: ${comparison.inconsistencies.length}`
-    );
-    needsReview.priorityScore += 30;
-    needsReview.severity =
-      needsReview.severity === "HIGH" ? "HIGH" : "MEDIUM";
-  }
-
-  // Rule 4: Missing critical validation
-  if (overallScore >= 0.7 && overallScore < 0.85) {
-    needsReview.decision = true;
-    needsReview.reasons.push("Data requires validation refinement");
-    needsReview.priorityScore += 20;
-    if (needsReview.severity === "LOW") {
-      needsReview.severity = "LOW";
-    }
-  }
-
-  // High confidence = auto-approve
-  if (overallScore >= 0.85 && !anomalies.isDetected) {
-    needsReview.decision = false;
-    needsReview.reasons.push("High confidence in provider data");
-    needsReview.priorityScore = 0;
-    needsReview.severity = "LOW";
-  }
-
-  return needsReview;
-}
-
-/**
- * Main Quality Assurance Agent Node
- * Orchestrates confidence scoring and review decision
+ * Quality Assurance Node - Entry point for LangGraph
+ * Reads all validation + enrichment results from state
+ * Computes confidence scores and determines review status
+ * Writes decision to state
  */
 export async function qualityAssuranceNode(state) {
-  console.log(
-    `[QualityAssuranceAgent] Evaluating provider: ${state.providerId}`
-  );
+  console.log("[QualityAssurance] Starting QA for provider:", state.providerId);
 
-  try {
-    // Step 1: Compute field-level confidence scores
-    const fieldConfidenceScores = computeFieldConfidenceScores(state);
+  const input = state.normalizedData || state.inputData || {};
+  const externalResults = state.externalResults || {};
+  const validationDiscrepancies = [...(state.validationDiscrepancies || [])];
 
-    // Step 2: Perform cross-source comparison
-    const crossSourceComparison = performCrossSourceComparison(state);
+  const contributions = {
+    npi: 0,
+    license: 0,
+    website: 0,
+    phone: 0,
+  };
 
-    // Step 3: Detect anomalies
-    const anomalyDetection = detectAnomalies(state);
+  const weights = {
+    npi: 0.35,
+    license: 0.25,
+    website: 0.20,
+    phone: 0.20,
+  };
 
-    // Step 4: Calculate overall confidence score
-    const overallConfidenceScore =
-      calculateOverallConfidenceScore(fieldConfidenceScores);
+  // NPI verification
+  if (externalResults.npi?.success && externalResults.npi?.data) {
+    const npiName = normalizeText(externalResults.npi.data.name || "");
+    const inputName = normalizeText(input.name || "");
+    const nameMatch = npiName && inputName ? npiName.includes(inputName) || inputName.includes(npiName) : false;
 
-    // Step 5: Determine if human review is needed
-    const reviewDecision = determineReviewNeed(
-      state,
-      overallConfidenceScore,
-      anomalyDetection,
-      crossSourceComparison
-    );
+    const npiAddress = externalResults.npi.data.address
+      ? [
+          externalResults.npi.data.address.address_1,
+          externalResults.npi.data.address.address_2,
+          externalResults.npi.data.address.city,
+          externalResults.npi.data.address.state,
+          externalResults.npi.data.address.postal_code,
+        ]
+          .filter(Boolean)
+          .join(", ")
+      : null;
 
-    // Update state with QA results
-    const updatedState = {
-      ...state,
-      fieldConfidenceScores,
-      overallConfidenceScore: parseFloat(
-        (overallConfidenceScore * 100).toFixed(2)
-      ),
-      needsHumanReview: reviewDecision.decision,
-      reviewSeverity: reviewDecision.severity,
-      priorityScore: reviewDecision.priorityScore,
-      anomalyDetection,
-      crossSourceComparison,
-    };
+    const addressMatch = npiAddress && input.address ? addressesMatch(input.address, npiAddress, 0.95) : false;
+    const phoneMatch = externalResults.npi.data.phone && input.phone
+      ? normalizePhone(externalResults.npi.data.phone) === normalizePhone(input.phone)
+      : false;
 
-    console.log(
-      `[QualityAssuranceAgent] Review needed: ${reviewDecision.decision} (Score: ${(overallConfidenceScore * 100).toFixed(2)}%, Severity: ${reviewDecision.severity})`
-    );
+    contributions.npi = nameMatch || addressMatch || phoneMatch ? 1 : 0.5;
 
-    return updatedState;
-  } catch (error) {
-    console.error("[QualityAssuranceAgent] Error:", error.message);
-
-    return {
-      ...state,
-      needsHumanReview: true,
-      reviewSeverity: "HIGH",
-      errorLog: [
-        ...state.errorLog,
-        {
-          stage: "QualityAssurance",
-          error: error.message,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-    };
+    if (!nameMatch) {
+      validationDiscrepancies.push({ field: "name", issue: "NPI_NAME_MISMATCH", severity: "MEDIUM" });
+    }
+    if (npiAddress && !addressMatch) {
+      validationDiscrepancies.push({ field: "address", issue: "NPI_ADDRESS_MISMATCH", severity: "MEDIUM" });
+    }
+    if (externalResults.npi.data.phone && !phoneMatch) {
+      validationDiscrepancies.push({ field: "phone", issue: "NPI_PHONE_MISMATCH", severity: "MEDIUM" });
+    }
   }
+
+  // License verification
+  if (externalResults.license?.success && externalResults.license?.data) {
+    const status = String(externalResults.license.data.licenseStatus || "").toUpperCase();
+    contributions.license = status === "ACTIVE" ? 1 : 0;
+    if (status && status !== "ACTIVE") {
+      validationDiscrepancies.push({ field: "license_status", issue: "LICENSE_INACTIVE", severity: "HIGH" });
+    }
+  }
+
+  // Website match
+  if (externalResults.website?.success && externalResults.website?.data) {
+    const webPhone = externalResults.website.data.phone || null;
+    const webAddress = externalResults.website.data.address || null;
+    const phoneMatch = webPhone && input.phone ? normalizePhone(webPhone) === normalizePhone(input.phone) : false;
+    const addressMatch = webAddress && input.address ? addressesMatch(input.address, webAddress, 0.95) : false;
+    contributions.website = phoneMatch || addressMatch ? 1 : 0.5;
+
+    if (webPhone && !phoneMatch) {
+      validationDiscrepancies.push({ field: "phone", issue: "WEBSITE_PHONE_MISMATCH", severity: "MEDIUM" });
+    }
+    if (webAddress && !addressMatch) {
+      validationDiscrepancies.push({ field: "address", issue: "WEBSITE_ADDRESS_MISMATCH", severity: "MEDIUM" });
+    }
+  }
+
+  // Phone verification
+  if (externalResults.phone?.success) {
+    contributions.phone = 1;
+  }
+
+  const baseScore =
+    contributions.npi * weights.npi +
+    contributions.license * weights.license +
+    contributions.website * weights.website +
+    contributions.phone * weights.phone;
+
+  const apiFailures = (state.validationSources || []).filter(s => s.success === false);
+  const conflictCount = validationDiscrepancies.filter(d => d.issue?.includes("MISMATCH") || d.issue?.includes("INACTIVE")).length;
+
+  const penalties = {
+    apiFailure: apiFailures.length * 0.05,
+    conflicts: conflictCount * 0.10,
+  };
+
+  let finalScore = Math.max(0, baseScore - penalties.apiFailure - penalties.conflicts);
+
+  if (state.validationResults?.hardReject) {
+    finalScore = 0;
+  }
+
+  let confidenceLevel = "low";
+  if (finalScore >= 0.75) confidenceLevel = "high";
+  else if (finalScore >= 0.5) confidenceLevel = "medium";
+
+  const needsHumanReview = finalScore < 0.65 || conflictCount > 0 || apiFailures.length > 0 || state.validationResults?.hardReject;
+
+  const reviewSeverity = finalScore < 0.4 ? "HIGH" : finalScore < 0.65 ? "MEDIUM" : "LOW";
+
+  const reviewReasons = [];
+  if (apiFailures.length > 0) reviewReasons.push("EXTERNAL_SOURCE_FAILURE");
+  if (conflictCount > 0) reviewReasons.push("DATA_CONFLICTS");
+  if (state.validationResults?.hardReject) reviewReasons.push("MISSING_OR_INVALID_REQUIRED_FIELDS");
+
+  return {
+    ...state,
+    validationDiscrepancies,
+    confidence: {
+      finalScore,
+      contributions,
+      penalties,
+      level: confidenceLevel,
+    },
+    needsHumanReview,
+    reviewSeverity,
+    decision: {
+      recommendedAction: state.validationResults?.hardReject ? "REJECT" : needsHumanReview ? "NEEDS_REVIEW" : "APPROVE",
+      reasons: reviewReasons,
+    },
+  };
 }

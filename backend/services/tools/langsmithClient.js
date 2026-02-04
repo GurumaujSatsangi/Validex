@@ -249,6 +249,11 @@ export async function logWorkflowCompletion(workflowId, providerId, nodeExecutio
 }
 
 /**
+ * Alias for logWorkflowCompletion
+ */
+export const completeWorkflowRun = logWorkflowCompletion;
+
+/**
  * Export execution trace data
  */
 export function exportExecutionTrace(nodeExecutionOrder, workflowId, providerId) {

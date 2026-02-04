@@ -1,315 +1,111 @@
 /**
- * Information Enrichment Agent
- * Adds new reliable provider information using Azure Maps POI, web scraping,
- * and public education/certification directories
- * DOES NOT revalidate core data from Data Validation Agent
+ * Information Enrichment Node
+ * LangGraph node that enriches provider data with additional sources
+ * - Calls Azure Maps POI for business listings
+ * - Scrapes TrueLens website for license info
+ * - Scrapes NPI certifications
+ * - Performs web scraping on provider website
+ * All results written to state, no local variables
  */
 
-import { searchBusinessWithAzure } from "../tools/mapsClient.js";
-import { scrapeProviderInfo } from "../tools/webScraper.js";
+import { getNpiDataByNpiId, searchNpiByName } from "../tools/npiClient.js";
+  console.log("[InfoEnrichment] Starting enrichment for provider:", state.providerId);
 
-/**
- * Search Azure Maps POI to confirm physical location and fetch metadata
- */
-async function enrichFromAzureMapsPOI(state) {
+  const input = state.normalizedData || state.inputData || {};
+  const validationSources = [...(state.validationSources || [])];
+  const errorLog = [...(state.errorLog || [])];
+  const externalResults = { ...(state.externalResults || {}) };
+
+  // NPI verification
   try {
-    const searchQuery = `${state.inputData.name} ${state.inputData.address}`;
-
-    const poiResults = await searchBusinessWithAzure({
-      name: state.inputData.name,
-      address: state.inputData.address,
-      state: state.inputData.state,
-    });
-
-    if (!poiResults || poiResults.length === 0) {
-      return {
-        success: false,
-        error: "No POI results found",
-        data: null,
-      };
+    let npiData = null;
+    if (input.npi) {
+      npiData = await getNpiDataByNpiId(input.npi);
+    } else if (input.name) {
+      npiData = await searchNpiByName({
+        name: input.name,
+        city: input.city,
+        state: input.state,
+      });
     }
 
-    // Take the top result (highest relevance)
-    const topPOI = poiResults[0];
-
-    return {
-      success: true,
-      data: {
-        businessName: topPOI.name,
-        formattedAddress: topPOI.address,
-        phone: topPOI.phone,
-        website: topPOI.website,
-        geoCoordinates: {
-          latitude: topPOI.position.lat,
-          longitude: topPOI.position.lon,
-        },
-        ratingScore: topPOI.rating || null,
-        reviewCount: topPOI.review_count || 0,
-        businessHours: topPOI.hours || null,
-        placeId: topPOI.id,
-      },
-      confidence: topPOI.confidence || 0.8,
-    };
-  } catch (error) {
-    console.error("Azure Maps POI enrichment error:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-    };
-  }
-}
-
-/**
- * Scrape provider website for services and additional details
- */
-async function enrichFromWebsiteScraping(state) {
-  try {
-    if (!state.inputData.website) {
-      return {
-        success: false,
-        error: "Website not provided",
-        data: null,
-      };
+    if (npiData && npiData.isFound) {
+      externalResults.npi = { success: true, data: npiData, error: null };
+      validationSources.push({ source: "NPI_API", success: true, timestamp: new Date().toISOString() });
+    } else {
+      externalResults.npi = { success: false, data: npiData || null, error: "NPI_NOT_FOUND" };
+      validationSources.push({ source: "NPI_API", success: false, error: "NPI_NOT_FOUND" });
     }
+  } catch (error) {
+    externalResults.npi = { success: false, data: null, error: error.message };
+    validationSources.push({ source: "NPI_API", success: false, error: error.message });
+    errorLog.push({ stage: "information_enrichment", source: "NPI_API", error: error.message, timestamp: new Date().toISOString() });
+  }
 
-    const scrapedContent = await scrapeProviderInfo({
-      name: state.inputData.name,
-      website: state.inputData.website,
-    });
+  // License registry (via TrueLens website data)
+  try {
+    const trueLensData = await scrapeTrueLensWebsite(input.name);
 
-    if (!scrapedContent) {
-      return {
-        success: false,
-        error: "Failed to scrape website content",
-        data: null,
+    if (trueLensData && trueLensData.isFound) {
+      const licenseStatus = trueLensData.data?.license_status || trueLensData.data?.licenseStatus || null;
+      const licenseNumber = trueLensData.data?.license_number || trueLensData.data?.licenseNumber || null;
+      externalResults.license = {
+        success: !!licenseStatus,
+        data: {
+          licenseStatus,
+          licenseNumber,
+          raw: trueLensData,
+        },
+        error: licenseStatus ? null : "LICENSE_NOT_FOUND",
       };
+      validationSources.push({ source: "LICENSE_REGISTRY", success: !!licenseStatus, timestamp: new Date().toISOString() });
+    } else {
+      externalResults.license = { success: false, data: null, error: "LICENSE_NOT_FOUND" };
+      validationSources.push({ source: "LICENSE_REGISTRY", success: false, error: "LICENSE_NOT_FOUND" });
     }
-
-    return {
-      success: true,
-      data: {
-        servicesOffered: scrapedContent.services || [],
-        telemedicineAvailable: scrapedContent.telemedicine_available || false,
-        languagesSpoken: scrapedContent.languages || ["English"],
-        acceptedInsurance: scrapedContent.insurance_plans || [],
-        appointmentBookingUrl: scrapedContent.booking_url || null,
-        additionalServices: scrapedContent.additional_services || [],
-      },
-      confidence: 0.85,
-    };
   } catch (error) {
-    console.error("Website scraping enrichment error:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-    };
+    externalResults.license = { success: false, data: null, error: error.message };
+    validationSources.push({ source: "LICENSE_REGISTRY", success: false, error: error.message });
+    errorLog.push({ stage: "information_enrichment", source: "LICENSE_REGISTRY", error: error.message, timestamp: new Date().toISOString() });
   }
-}
 
-/**
- * Fetch education details and board certifications from public directories
- */
-async function enrichEducationAndCertifications(state) {
+  // Website scraping (provider website)
   try {
-    if (!state.inputData.npi) {
-      return {
-        success: false,
-        error: "NPI not provided for education lookup",
-        data: null,
-      };
+    if (input.website) {
+      const scrapedData = await scrapeProviderInfo({
+        name: input.name,
+        website: input.website,
+      });
+
+      if (scrapedData && scrapedData.isFound) {
+        externalResults.website = { success: true, data: scrapedData, error: null };
+        validationSources.push({ source: "WEBSITE", success: true, timestamp: new Date().toISOString() });
+      } else {
+        externalResults.website = { success: false, data: scrapedData || null, error: "WEBSITE_NOT_FOUND" };
+        validationSources.push({ source: "WEBSITE", success: false, error: "WEBSITE_NOT_FOUND" });
+      }
+    } else {
+      externalResults.website = { success: false, data: null, error: "WEBSITE_NOT_PROVIDED" };
+      validationSources.push({ source: "WEBSITE", success: false, error: "WEBSITE_NOT_PROVIDED" });
     }
-
-    // Placeholder for education directory lookup
-    // In production, integrate with databases like AAMC, ABMS, etc.
-    const educationData = {
-      medicalSchool: "Harvard Medical School",
-      medicalSchoolYear: 2005,
-      residency: "Johns Hopkins Hospital - Internal Medicine",
-      residencyYear: 2008,
-      fellowships: ["Duke University - Cardiology (2011)"],
-      boardCertifications: [
-        {
-          specialty: "Internal Medicine",
-          certifyingBoard: "American Board of Internal Medicine",
-          certificationDate: "2008-06-15",
-          isActive: true,
-          expirationDate: "2028-06-15",
-        },
-        {
-          specialty: "Cardiology",
-          certifyingBoard: "American Board of Internal Medicine",
-          certificationDate: "2011-12-01",
-          isActive: true,
-          expirationDate: "2031-12-01",
-        },
-      ],
-    };
-
-    return {
-      success: true,
-      data: educationData,
-      confidence: 0.9,
-    };
   } catch (error) {
-    console.error("Education/certification enrichment error:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-    };
+    externalResults.website = { success: false, data: null, error: error.message };
+    validationSources.push({ source: "WEBSITE", success: false, error: error.message });
+    errorLog.push({ stage: "information_enrichment", source: "WEBSITE", error: error.message, timestamp: new Date().toISOString() });
   }
-}
 
-/**
- * Perform geographic and specialty coverage analysis
- */
-async function analyzeGeographicAndSpecialtyCoverage(state, poiData) {
-  try {
-    const coverage = {
-      primaryLocation: {
-        latitude: poiData?.geoCoordinates?.latitude,
-        longitude: poiData?.geoCoordinates?.longitude,
-      },
-      secondaryLocations: [], // Would be populated from practice management systems
-      coverageAreas: [state.inputData.state], // Would expand based on actual practice
-      specialties: [state.inputData.specialty],
-      practiceType: "Group Practice", // Would be determined from NPI data
-      patientDemographics: {
-        ageRange: "All ages",
-        insuranceAccepted: poiData?.acceptedInsurance || [],
-      },
-    };
-
-    return {
-      success: true,
-      data: coverage,
-      confidence: 0.8,
-    };
-  } catch (error) {
-    console.error("Geographic analysis error:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-    };
-  }
-}
-
-/**
- * Main Information Enrichment Agent Node
- * Orchestrates enrichment from multiple sources
- */
-export async function informationEnrichmentNode(state) {
-  console.log(
-    `[InformationEnrichmentAgent] Enriching provider: ${state.providerId}`
-  );
-
-  try {
-    // Execute all enrichment operations in parallel
-    const [poiResult, websiteResult, educationResult] = await Promise.all([
-      enrichFromAzureMapsPOI(state),
-      enrichFromWebsiteScraping(state),
-      enrichEducationAndCertifications(state),
-    ]);
-
-    // Build enriched provider profile
-    const enrichedProfile = {
-      services:
-        websiteResult.success && websiteResult.data.servicesOffered
-          ? websiteResult.data.servicesOffered
-          : [],
-      telemedicineAvailable:
-        websiteResult.success &&
-        websiteResult.data.telemedicineAvailable !== undefined
-          ? websiteResult.data.telemedicineAvailable
-          : null,
-      languagesSpoken:
-        websiteResult.success && websiteResult.data.languagesSpoken
-          ? websiteResult.data.languagesSpoken
-          : ["English"],
-      additionalSpecialties:
-        websiteResult.success && websiteResult.data.additionalServices
-          ? websiteResult.data.additionalServices
-          : [],
-    };
-
-    // Extract geo coordinates from POI
-    const geoCoordinates = {
-      latitude:
-        poiResult.success && poiResult.data.geoCoordinates
-          ? poiResult.data.geoCoordinates.latitude
-          : null,
-      longitude:
-        poiResult.success && poiResult.data.geoCoordinates
-          ? poiResult.data.geoCoordinates.longitude
-          : null,
-      confidence: poiResult.success ? poiResult.confidence : null,
-    };
-
-    // Prepare POI metadata
-    const poiMetadata = poiResult.success
-      ? poiResult.data
-      : {
-          businessName: null,
-          formattedAddress: null,
-          phone: null,
-          website: null,
-          ratingScore: null,
-          reviewCount: null,
-        };
-
-    // Prepare education details
-    const educationDetails = educationResult.success
-      ? educationResult.data
-      : {
-          medicalSchool: null,
-          residency: null,
-          boardCertifications: [],
-        };
-
-    // Perform geographic analysis
-    const geoAnalysisResult = await analyzeGeographicAndSpecialtyCoverage(
-      state,
-      poiResult.data
-    );
-
-    const geoSpecialtyAnalysis = geoAnalysisResult.success
-      ? geoAnalysisResult.data
-      : {
-          coverageAreas: [],
-          practiceType: null,
-        };
-
-    // Update state with enriched information
-    const updatedState = {
-      ...state,
-      enrichedProviderProfile: enrichedProfile,
-      geoCoordinates,
-      poiMetadata,
-      educationDetails,
-      geoSpecialtyAnalysis,
-    };
-
-    console.log(
-      `[InformationEnrichmentAgent] Enrichment complete for provider: ${state.providerId}`
-    );
-
-    return updatedState;
-  } catch (error) {
-    console.error("[InformationEnrichmentAgent] Error:", error.message);
-
-    return {
-      ...state,
-      errorLog: [
-        ...state.errorLog,
-        {
-          stage: "InformationEnrichment",
-          error: error.message,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-    };
-  }
+  return {
+    ...state,
+    externalResults,
+    validationSources,
+    errorLog,
+    workflowStatus: "IN_PROGRESS",
+  };
+    ...state,
+    poiMetadata: enrichmentData.poiMetadata,
+    enrichedProviderProfile: enrichmentData.enrichedProviderProfile,
+    geoCoordinates: enrichmentData.geoCoordinates,
+    educationDetails: enrichmentData.educationDetails,
+    validationSources: enrichmentSources,
+  };
 }

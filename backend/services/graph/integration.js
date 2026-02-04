@@ -65,7 +65,7 @@ export async function createValidationRunWorkflow(req, res) {
         workflow_id: state.workflowId,
         status: state.workflowStatus,
         directory_status: state.directoryStatus,
-        confidence_score: state.overallConfidenceScore,
+        confidence_score: state.confidence?.finalScore ?? 0,
         needs_review: state.needsHumanReview,
         review_severity: state.reviewSeverity,
         started_at: state.startTime,
@@ -107,8 +107,9 @@ export async function createValidationRunWorkflow(req, res) {
     }
 
     // Create review tasks if needed
-    if (state.needsHumanReview && state.reviewerTasks.length > 0) {
-      const reviewTasksData = state.reviewerTasks.map((task) => ({
+    const reviewerTasks = state.reviewerTasks || [];
+    if (state.needsHumanReview && reviewerTasks.length > 0) {
+      const reviewTasksData = reviewerTasks.map((task) => ({
         validation_run_id: validationRun[0].id,
         provider_id: state.providerId,
         task_type: task.reviewType,
@@ -140,8 +141,8 @@ export async function createValidationRunWorkflow(req, res) {
           validation_run_id: validationRun[0].id,
           provider_id: state.providerId,
           report_data: report, // Store full report as JSON
-          confidence_scores: state.fieldConfidenceScores,
-          anomalies: state.anomalyDetection,
+          confidence_scores: state.confidence?.contributions || {},
+          anomalies: state.validationDiscrepancies || [],
           created_at: new Date().toISOString(),
         });
 
@@ -158,7 +159,7 @@ export async function createValidationRunWorkflow(req, res) {
         workflowId: state.workflowId,
         status: state.workflowStatus,
         directoryStatus: state.directoryStatus,
-        confidenceScore: state.overallConfidenceScore,
+        confidenceScore: state.confidence?.finalScore ?? 0,
         needsReview: state.needsHumanReview,
         reviewSeverity: state.reviewSeverity,
         executionTime: result.executionTime,
@@ -167,7 +168,7 @@ export async function createValidationRunWorkflow(req, res) {
         validatedFields: state.validatedFields.length,
         discrepancies: state.validationDiscrepancies.length,
         servicesEnriched: state.enrichedProviderProfile.services.length,
-        anomaliesDetected: state.anomalyDetection.isDetected,
+        anomaliesDetected: (state.validationDiscrepancies || []).length > 0,
       },
     });
   } catch (error) {
@@ -227,7 +228,7 @@ export class ValidatorServiceWorkflowIntegration {
     return {
       providerId: state.providerId,
       workflowId: state.workflowId,
-      confidenceScore: state.overallConfidenceScore,
+      confidenceScore: state.confidence?.finalScore ?? 0,
       directoryStatus: state.directoryStatus,
       needsReview: state.needsHumanReview,
       reviewSeverity: state.reviewSeverity,
@@ -320,11 +321,11 @@ export async function processUploadedProviderWithWorkflow(
       workflow_id: state.workflowId,
       source_type: "PDF_UPLOAD",
       validation_status: state.directoryStatus,
-      confidence_score: state.overallConfidenceScore,
+      confidence_score: state.confidence?.finalScore ?? 0,
       extracted_data: extractedData,
       workflow_state_summary: {
         discrepancies: state.validationDiscrepancies,
-        anomalies: state.anomalyDetection,
+        anomalies: state.validationDiscrepancies || [],
         needs_review: state.needsHumanReview,
       },
       processed_at: new Date().toISOString(),
@@ -339,7 +340,7 @@ export async function processUploadedProviderWithWorkflow(
       validationResult: data?.[0] || {},
       workflowState: {
         status: state.directoryStatus,
-        confidence: state.overallConfidenceScore,
+        confidence: state.confidence?.finalScore ?? 0,
       },
     };
   } catch (error) {
@@ -396,7 +397,7 @@ export async function batchValidateProviders(req, res) {
           npi: provider.npi,
           success: result.success,
           status: result.state?.directoryStatus,
-          confidence: result.state?.overallConfidenceScore,
+          confidence: result.state?.confidence?.finalScore ?? 0,
           needsReview: result.state?.needsHumanReview,
           error: result.error || null,
         });

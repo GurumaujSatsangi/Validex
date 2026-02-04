@@ -178,11 +178,13 @@ export function levenshteinScore(a, b) {
 /**
  * Address similarity using weighted combination of multiple algorithms
  * Handles null/undefined safely
+ * Implements stricter matching with high threshold for suggestions
  * @param {string} addrA
  * @param {string} addrB
+ * @param {number} strictThreshold - threshold above which addresses are considered too similar to suggest changes (default 0.90)
  * @returns {number} - similarity score 0–1
  */
-export function addressSimilarity(addrA, addrB) {
+export function addressSimilarity(addrA, addrB, strictThreshold = 0.90) {
   // Handle null/undefined
   if (!addrA || !addrB) return 0;
 
@@ -190,8 +192,8 @@ export function addressSimilarity(addrA, addrB) {
   const jw = jaroWinkler(addrA, addrB);
   const lev = levenshteinScore(addrA, addrB);
 
-  // Weighted combination
-  return 0.5 * cosine + 0.3 * jw + 0.2 * lev;
+  // Weighted combination with emphasis on Jaro-Winkler for address strings
+  return 0.4 * cosine + 0.45 * jw + 0.15 * lev;
 }
 
 /**
@@ -293,4 +295,28 @@ export function determineAction(confidence, threshold = 0.45) {
  */
 export function determineSeverity(confidence, threshold = 0.45) {
   return confidence >= threshold ? 'LOW' : 'HIGH';
+}
+
+/**
+ * Check if an address suggestion should be made
+ * Returns false if addresses are too similar (above similarity threshold)
+ * @param {string} currentAddress - Current provider address
+ * @param {string} suggestedAddress - Suggested address
+ * @param {number} similarityThreshold - Above this, addresses are too similar to suggest (default 0.99 for exact matches only)
+ * @returns {boolean} - True if suggestion should be made, false if addresses are too similar
+ */
+export function shouldSuggestAddressChange(currentAddress, suggestedAddress, similarityThreshold = 0.99) {
+  if (!currentAddress || !suggestedAddress) return true;
+  
+  // If exact match, don't suggest
+  if (currentAddress === suggestedAddress) return false;
+  
+  // Calculate similarity
+  const similarity = addressSimilarity(currentAddress, suggestedAddress);
+  
+  // If too similar (>99%), don't suggest - this only allows exact or near-exact matches
+  // Anything different enough (98.9% or less) should be reviewed
+  if (similarity >= similarityThreshold) return false;
+  
+  return true;
 }

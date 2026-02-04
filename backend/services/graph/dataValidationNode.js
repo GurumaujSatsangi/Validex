@@ -1,16 +1,21 @@
 /**
- * Data Validation Agent
+ * Data Validation Node
  * Verifies correctness of provider data using NPI Registry, state licensing, 
  * website scraping, and phone verification
  */
 
-import { getNpiDataByNpiId, fetchProviderByNpi } from "../tools/npiClient.js";
-import { scrapeProviderInfo } from "../tools/webScraper.js";
 import { normalizePhone, validatePhoneFormat } from "../tools/phoneUtils.js";
-import { extractZip, extractCity, extractState, normalizeAddressComponent, validateAddressFormat, validateState } from "../tools/addressUtils.js";
+import {
+  extractZip,
+  extractCity,
+  normalizeAddressComponent,
+  normalizeText,
+  validateAddressFormat,
+  validateState,
+} from "../tools/addressUtils.js";
 
 /**
- * Fetch and validate against NPI Registry
+ * Validate NPI format (local check only)
  */
 async function validateNPI(state) {
   try {
@@ -22,29 +27,16 @@ async function validateNPI(state) {
       };
     }
 
-    const npiData = await fetchProviderByNpi(state.inputData.npi);
-
-    if (!npiData) {
-      return {
-        success: false,
-        error: "NPI not found in registry",
-        data: null,
-      };
-    }
-
-    // Cross-check provider name
-    const nameMatch =
-      npiData.first_name?.toLowerCase() ===
-      state.inputData.name.split(" ")[0].toLowerCase();
+    const npi = String(state.inputData.npi).trim();
+    const formatValid = /^\d{10}$/.test(npi);
 
     return {
-      success: true,
-      data: npiData,
+      success: formatValid,
+      data: { npi },
       validation: {
-        nameMatch,
-        npiValid: true,
-        practiceActive: npiData.sole_proprietor === "Y",
+        npiFormatValid: formatValid,
       },
+      error: formatValid ? null : "INVALID_NPI_FORMAT",
     };
   } catch (error) {
     console.error("NPI validation error:", error.message);
@@ -56,357 +48,136 @@ async function validateNPI(state) {
   }
 }
 
-/**
- * Verify license status via state licensing boards
- */
-async function validateLicense(state) {
-  try {
-    if (!state.inputData.state || !state.inputData.npi) {
-      return {
-        success: false,
-        error: "State or NPI not provided",
-        data: null,
-      };
-    }
 
-    // Placeholder for state licensing board lookup
-    // In production, integrate with actual state board APIs
-    const licenseValidation = {
-      state: state.inputData.state,
-      licenseNumber: state.inputData.npi, // Often NPI is cross-referenced
-      licenseStatus: "ACTIVE", // Would query actual board
-      validationDate: new Date().toISOString(),
-    };
-
-    return {
-      success: true,
-      data: licenseValidation,
-      validation: {
-        licenseValid: true,
-        licenseActive: licenseValidation.licenseStatus === "ACTIVE",
-      },
-    };
-  } catch (error) {
-    console.error("License validation error:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-    };
-  }
-}
-
-/**
- * Scrape provider website to verify contact details
- */
-async function validateWebsiteData(state) {
-  try {
-    if (!state.inputData.website) {
-      return {
-        success: false,
-        error: "Website not provided",
-        data: null,
-      };
-    }
-
-    const scrapedData = await scrapeProviderInfo({
-      name: state.inputData.name,
-      website: state.inputData.website,
-    });
-
-    if (!scrapedData) {
-      return {
-        success: false,
-        error: "Failed to scrape website",
-        data: null,
-      };
-    }
-
-    // Compare scraped data with input data
-    const discrepancies = [];
-
-    if (
-      scrapedData.phone &&
-      !normalizePhone(state.inputData.phone).includes(
-        normalizePhone(scrapedData.phone)
-      )
-    ) {
-      discrepancies.push({
-        field: "phone",
-        inputValue: state.inputData.phone,
-        scrapedValue: scrapedData.phone,
-        severity: "MEDIUM",
-      });
-    }
-
-    if (
-      scrapedData.address &&
-      scrapedData.address.toLowerCase() !==
-        state.inputData.address.toLowerCase()
-    ) {
-      discrepancies.push({
-        field: "address",
-        inputValue: state.inputData.address,
-        scrapedValue: scrapedData.address,
-        severity: "MEDIUM",
-      });
-    }
-
-    return {
-      success: true,
-      data: scrapedData,
-      discrepancies,
-      validation: {
-        websiteAccessible: true,
-        dataMatches: discrepancies.length === 0,
-      },
-    };
-  } catch (error) {
-    console.error("Website scraping error:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-    };
-  }
-}
-
-/**
- * Validate phone number format and verify with public services
- */
-async function validatePhone(state) {
-  try {
-    if (!state.inputData.phone) {
-      return {
-        success: false,
-        error: "Phone not provided",
-        data: null,
-      };
-    }
-
-    const normalizedPhone = normalizePhone(state.inputData.phone);
-    const isValid = validatePhoneFormat(normalizedPhone);
-
-    if (!isValid) {
-      return {
-        success: false,
-        error: "Invalid phone format",
-        data: null,
-      };
-    }
-
-    // Placeholder for public phone verification
-    // In production, use services like TrueCaller, NumVerify, etc.
-    const phoneVerification = {
-      originalPhone: state.inputData.phone,
-      normalizedPhone,
-      formatValid: true,
-      carrierType: "MOBILE", // Would fetch from service
-      riskIndicator: "LOW",
-    };
-
-    return {
-      success: true,
-      data: phoneVerification,
-      validation: {
-        phoneFormatValid: true,
-        phoneVerified: true,
-      },
-    };
-  } catch (error) {
-    console.error("Phone validation error:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-    };
-  }
-}
-
-/**
- * Validate address format and state consistency
- */
-async function validateAddress(state) {
-  try {
-    if (!state.inputData.address || !state.inputData.state) {
-      return {
-        success: false,
-        error: "Address or state not provided",
-        data: null,
-      };
-    }
-
-    const addressValidation = validateAddressFormat(
-      state.inputData.address
-    );
-    const stateValidation = validateState(state.inputData.state);
-
-    return {
-      success: addressValidation.isValid && stateValidation.isValid,
-      data: {
-        address: state.inputData.address,
-        state: state.inputData.state,
-        addressComponents: addressValidation.components,
-        stateCode: stateValidation.code,
-      },
-      validation: {
-        addressFormatValid: addressValidation.isValid,
-        stateValid: stateValidation.isValid,
-        stateConsistent: true, // Would cross-check with other sources
-      },
-    };
-  } catch (error) {
-    console.error("Address validation error:", error.message);
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-    };
-  }
-}
 
 /**
  * Main Data Validation Agent Node
  * Orchestrates all validation steps and aggregates results
  */
 export async function dataValidationNode(state) {
-  console.log(`[DataValidationAgent] Processing provider: ${state.providerId}`);
+  console.log(`[DataValidation] Processing provider: ${state.providerId}`);
 
   try {
-    // Execute all validations in parallel for efficiency
-    const [npiResult, licenseResult, websiteResult, phoneResult, addressResult] =
-      await Promise.all([
-        validateNPI(state),
-        validateLicense(state),
-        validateWebsiteData(state),
-        validatePhone(state),
-        validateAddress(state),
-      ]);
+    const input = state.inputData || {};
+    const validationDiscrepancies = [...(state.validationDiscrepancies || [])];
+    const validationSources = [...(state.validationSources || [])];
 
-    // Aggregate validated fields
-    const validatedFields = [];
-    const discrepancies = [];
-    const sources = [];
+    const missingFields = [];
+    const malformedFields = [];
+    const requiredFields = {};
 
-    // Process NPI validation
-    if (npiResult.success) {
-      validatedFields.push({
-        field: "npi",
-        value: state.inputData.npi,
-        verified: true,
-        confidence: 0.95,
-        source: "NPI_REGISTRY",
-      });
-      sources.push({
-        source: "NPI_REGISTRY",
-        fieldsValidated: ["npi", "name", "practice_active"],
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    // Process license validation
-    if (licenseResult.success) {
-      validatedFields.push({
-        field: "license",
-        value: licenseResult.data.licenseStatus,
-        verified: true,
-        confidence: 0.9,
-        source: "LICENSING_BOARD",
-      });
-      sources.push({
-        source: "LICENSING_BOARD",
-        fieldsValidated: ["license_status", "state"],
-        timestamp: new Date().toISOString(),
-        state: state.inputData.state,
-      });
-    }
-
-    // Process website validation
-    if (websiteResult.success) {
-      validatedFields.push({
-        field: "contact_details",
-        value: websiteResult.data,
-        verified: true,
-        confidence: 0.85,
-        source: "WEBSITE",
-      });
-      if (websiteResult.discrepancies.length > 0) {
-        discrepancies.push(...websiteResult.discrepancies);
+    const requiredList = ["name", "address", "phone", "state"];
+    for (const field of requiredList) {
+      const value = input[field];
+      const present = value !== undefined && value !== null && String(value).trim().length > 0;
+      requiredFields[field] = { present, valid: present };
+      if (!present) {
+        missingFields.push(field);
+        validationDiscrepancies.push({
+          field,
+          issue: "MISSING_REQUIRED_FIELD",
+          severity: "HIGH",
+        });
       }
-      sources.push({
-        source: "WEBSITE",
-        fieldsValidated: ["phone", "address", "contact_email"],
-        timestamp: new Date().toISOString(),
-        url: state.inputData.website,
-      });
     }
 
-    // Process phone validation
-    if (phoneResult.success) {
-      validatedFields.push({
+    const normalizedPhone = input.phone ? normalizePhone(input.phone) : null;
+    const phoneValid = normalizedPhone ? validatePhoneFormat(normalizedPhone) : false;
+    if (input.phone && !phoneValid) {
+      malformedFields.push({ field: "phone", reason: "INVALID_PHONE_FORMAT" });
+      validationDiscrepancies.push({
         field: "phone",
-        value: phoneResult.data.normalizedPhone,
-        verified: true,
-        confidence: 0.8,
-        source: "PHONE_VERIFICATION",
-      });
-      sources.push({
-        source: "PHONE_VERIFICATION",
-        fieldsValidated: ["phone"],
-        timestamp: new Date().toISOString(),
+        issue: "INVALID_PHONE_FORMAT",
+        severity: "HIGH",
       });
     }
 
-    // Process address validation
-    if (addressResult.success) {
-      validatedFields.push({
+    const addressValidation = input.address ? validateAddressFormat(input.address) : { isValid: false, components: {} };
+    if (input.address && !addressValidation.isValid) {
+      malformedFields.push({ field: "address", reason: "INVALID_ADDRESS_FORMAT" });
+      validationDiscrepancies.push({
         field: "address",
-        value: addressResult.data.address,
-        verified: true,
-        confidence: 0.85,
-        source: "ADDRESS_VALIDATION",
-      });
-      validatedFields.push({
-        field: "state",
-        value: addressResult.data.state,
-        verified: true,
-        confidence: 0.9,
-        source: "ADDRESS_VALIDATION",
-      });
-      sources.push({
-        source: "ADDRESS_VALIDATION",
-        fieldsValidated: ["address", "state"],
-        timestamp: new Date().toISOString(),
+        issue: "INVALID_ADDRESS_FORMAT",
+        severity: "HIGH",
       });
     }
 
-    // Update state with validation results
-    const updatedState = {
-      ...state,
-      validatedFields,
-      validationDiscrepancies: discrepancies,
-      validationSources: sources,
-      npiLookupResult: npiResult.data || null,
-      licensingBoardResult: licenseResult.data || null,
-      websiteScrapingResult: websiteResult.data || null,
-      phoneVerificationResult: phoneResult.data || null,
-      workflowStatus: "IN_PROGRESS",
+    const stateValidation = input.state ? validateState(input.state) : { isValid: false, code: null };
+    if (input.state && !stateValidation.isValid) {
+      malformedFields.push({ field: "state", reason: "INVALID_STATE" });
+      validationDiscrepancies.push({
+        field: "state",
+        issue: "INVALID_STATE",
+        severity: "HIGH",
+      });
+    }
+
+    const npiResult = await validateNPI(state);
+    if (!npiResult.success && npiResult.error === "INVALID_NPI_FORMAT") {
+      malformedFields.push({ field: "npi", reason: "INVALID_NPI_FORMAT" });
+      validationDiscrepancies.push({
+        field: "npi",
+        issue: "INVALID_NPI_FORMAT",
+        severity: "MEDIUM",
+      });
+    }
+
+    const normalizedData = {
+      name: input.name ? normalizeText(input.name) : null,
+      npi: input.npi ? String(input.npi).trim() : null,
+      address: input.address ? normalizeAddressComponent(input.address) : null,
+      phone: normalizedPhone || null,
+      website: input.website ? String(input.website).trim() : null,
+      specialty: input.specialty ? normalizeText(input.specialty) : null,
+      state: stateValidation.code || (input.state ? input.state.toUpperCase() : null),
+      city: input.city || extractCity(input.address),
+      zip: input.zip || extractZip(input.address),
     };
 
-    console.log(
-      `[DataValidationAgent] Validation complete. Found ${discrepancies.length} discrepancies.`
-    );
+    const hardReject = missingFields.length > 0 || malformedFields.some(f => ["address", "state"].includes(f.field));
 
-    return updatedState;
+    validationSources.push({
+      source: "INPUT_VALIDATION",
+      success: missingFields.length === 0 && malformedFields.length === 0,
+      errors: [...missingFields, ...malformedFields.map(m => `${m.field}:${m.reason}`)],
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      ...state,
+      normalizedData,
+      validationResults: {
+        requiredFields,
+        missingFields,
+        malformedFields,
+        hardReject,
+      },
+      validationDiscrepancies,
+      validationSources,
+      externalResults: {
+        ...(state.externalResults || {}),
+        phone: {
+          success: phoneValid,
+          data: normalizedPhone ? { normalizedPhone } : null,
+          error: phoneValid ? null : "INVALID_PHONE_FORMAT",
+        },
+        npi: {
+          success: npiResult.success,
+          data: npiResult.data || null,
+          error: npiResult.error || null,
+        },
+      },
+      workflowStatus: "IN_PROGRESS",
+    };
   } catch (error) {
-    console.error("[DataValidationAgent] Error:", error.message);
+    console.error("[DataValidation] Error:", error.message);
 
     return {
       ...state,
       errorLog: [
-        ...state.errorLog,
+        ...(state.errorLog || []),
         {
-          stage: "DataValidation",
+          stage: "data_validation",
           error: error.message,
           timestamp: new Date().toISOString(),
         },

@@ -1,27 +1,81 @@
-import { runDataValidation } from "./agents/dataValidationAgent.js";
-import { runQualityAssurance } from "./agents/qualityAssuranceAgent.js";
-import { runDirectoryManagement } from "./agents/directoryManagementAgent.js";
-import { runInfoEnrichment } from "./agents/infoEnrichmentAgent.js";
-import { sendAdminValidationSummaryEmail, sendProviderDiscrepancyEmail } from "./agents/emailGenerationAgent.js";
+/**
+ * Validation Service - LangGraph Integration
+ * 
+ * This service is now a thin wrapper around LangGraph execution.
+ * All validation logic runs inside the LangGraph workflow, not as sequential function calls.
+ * 
+ * OLD APPROACH (removed):
+ * - Sequential function calls (runDataValidation → runInfoEnrichment → runQA → runDM)
+ * - State scattered across database and local variables
+ * - No structured decision flow
+ * 
+ * NEW APPROACH (implemented):
+ * - LangGraph orchestrates all nodes
+ * - Shared state object flows through graph
+ * - Conditional routing based on confidence scores
+ * - Proper separation of concerns (validation / enrichment / scoring / decision)
+ */
+
+import { executeValidationWorkflow } from "./graph/workflow.js";
 import { supabase } from "../supabaseClient.js";
 
+/**
+ * Run validation for a single provider using LangGraph
+ * @param {Object} provider - Provider record from database
+ * @param {String} runId - Validation run ID
+ * @returns {Promise<Object>} - Result with needsReview flag
+ */
 export async function runValidationForProvider(provider, runId) {
-  await runDataValidation(provider);
-  await runInfoEnrichment(provider);
-  const qa = await runQualityAssurance(provider, runId);
-  const dm = await runDirectoryManagement(provider, runId);
-  return { needsReview: qa.needsReview || dm.needsReview };
+  console.log(`[ValidationService] Starting LangGraph validation for provider: ${provider.id}`);
+  
+  // Prepare input data for workflow
+  const inputData = {
+    name: provider.name,
+    npi: provider.npi_id,
+    address: provider.address_line1,
+    phone: provider.phone,
+    website: provider.website,
+    specialty: provider.speciality,
+    state: provider.state,
+  };
+  
+  // Execute LangGraph workflow
+  const result = await executeValidationWorkflow(inputData, {
+    providerId: provider.id,
+    runId,
+  });
+  
+  if (result.success) {
+    const finalState = result.state;
+    
+    return {
+      needsReview: finalState.needsHumanReview,
+      confidence: finalState.confidence?.finalScore ?? 0,
+      status: finalState.directoryStatus,
+      alerts: finalState.alerts,
+    };
+  } else {
+    console.error(`[ValidationService] Workflow failed:`, result.error);
+    
+    // On failure, mark as needs review
+    return {
+      needsReview: true,
+      confidence: 0,
+      status: "FAILED",
+      error: result.error,
+    };
+  }
 }
 
 /**
  * Run validation for multiple imported providers (e.g., from PDF or CSV import)
- * Creates a validation run and processes all providers through the complete workflow
+ * Creates a validation run and processes all providers through LangGraph workflow
  * @param {Array<String>} providerIds - Array of provider UUIDs to validate
  * @returns {Promise<String>} The validation run ID
  */
 export async function runValidationForImportedProviders(providerIds) {
   try {
-    console.info('[Validation Service] Starting validation for', providerIds.length, 'imported providers');
+    console.info('[ValidationService] Starting validation for', providerIds.length, 'imported providers');
 
     // Create a new validation run
     const { data: run, error: runErr } = await supabase
@@ -37,33 +91,28 @@ export async function runValidationForImportedProviders(providerIds) {
       throw new Error(`Failed to create validation run: ${runErr.message || runErr}`);
     }
 
-    const runId = run.id;
-    console.info('[Validation Service] Created validation run:');
-    console.info('[Validation Service]   Run ID: ' + runId);
-    console.info('[Validation Service] ' + `=`.repeat(60));
+    console.info('[ValidationService] Created validation run:', run.id);
 
-    let processed = 0;
     let successCount = 0;
     let needsReviewCount = 0;
 
-    // Process each provider
-    for (const providerId of providerIds) {
+    // Process each provider through LangGraph workflow
+    for (const [index, providerId] of providerIds.entries()) {
       try {
-        // Fetch the provider data
-        const { data: provider, error: fetchErr } = await supabase
+        // Fetch provider data
+        const { data: provider, error: provErr } = await supabase
           .from('providers')
           .select('*')
           .eq('id', providerId)
           .single();
 
-        if (fetchErr || !provider) {
-          console.error('[Validation Service] Failed to fetch provider', providerId, fetchErr?.message || 'Not found');
-          processed++;
+        if (provErr || !provider) {
+          console.error(`[ValidationService] Provider ${providerId} not found:`, provErr);
           continue;
         }
 
-        // Run validation workflow
-        const result = await runValidationForProvider(provider, runId);
+        // Run LangGraph validation
+        const result = await runValidationForProvider(provider, run.id);
 
         if (result.needsReview) {
           needsReviewCount++;
@@ -71,147 +120,79 @@ export async function runValidationForImportedProviders(providerIds) {
           successCount++;
         }
 
-        processed++;
-
-        // Update run progress
-        await supabase
-          .from('validation_runs')
-          .update({
-            processed,
-            success_count: successCount,
-            needs_review_count: needsReviewCount
-          })
-          .eq('id', runId);
-
-        console.info('[Validation Service] Processed provider', providerId, '- Progress:', processed, '/', providerIds.length);
-      } catch (err) {
-        console.error('[Validation Service] Error validating provider', providerId, err.message || err);
-        processed++;
+        console.info(`[ValidationService] Processed provider ${providerId} - Progress: ${index + 1} / ${providerIds.length}`);
+      } catch (providerError) {
+        console.error(`[ValidationService] Error processing provider ${providerId}:`, providerError.message);
+        needsReviewCount++;
       }
     }
 
-    // Mark run as complete
-    const { error: completeErr } = await supabase
+    // Update validation run with results
+    await supabase
       .from('validation_runs')
       .update({
-        completed_at: new Date().toISOString()
+        completed_at: new Date().toISOString(),
+        providers_success: successCount,
+        providers_needs_review: needsReviewCount
       })
-      .eq('id', runId);
+      .eq('id', run.id);
 
-    if (completeErr) {
-      console.error('[Validation Service] Failed to mark run as complete:', completeErr.message || completeErr);
-    }
+    console.info(`[ValidationService] Validation run complete: ${run.id} - Success: ${successCount} - Needs Review: ${needsReviewCount}`);
 
-    console.info('[Validation Service] Validation run complete:', runId, '- Success:', successCount, '- Needs Review:', needsReviewCount);
-
-    // Send admin email notification
-    try {
-      console.info('[Validation Service] Sending admin notification email for run:', runId);
-      await sendAdminValidationSummaryEmail(runId, providerIds[0]);
-      console.info('[Validation Service] Admin email sent successfully');
-    } catch (emailErr) {
-      console.error('[Validation Service] Failed to send admin email:', emailErr.message || emailErr);
-    }
-
-    // Send provider emails for issues
-    for (const providerId of providerIds) {
-      try {
-        await sendProviderDiscrepancyEmail(providerId, runId);
-      } catch (emailErr) {
-        console.error('[Validation Service] Failed to send provider email for', providerId, ':', emailErr.message || emailErr);
-      }
-    }
-
-    return runId;
+    return run.id;
   } catch (error) {
-    console.error('[Validation Service] Fatal error in runValidationForImportedProviders:', error.message || error);
+    console.error('[ValidationService] Fatal error in validation run:', error.message);
     throw error;
   }
 }
 
 /**
- * Run validation for a single provider (e.g., manually added by NPI)
- * Creates a validation run, processes the provider, and sends email notifications
+ * Run validation for a single provider (manual trigger)
  * @param {String} providerId - Provider UUID
- * @returns {Promise<String>} The validation run ID
+ * @returns {Promise<String>} Validation run ID
  */
 export async function runValidationForSingleProvider(providerId) {
-  try {
-    console.info('[Validation Service] Starting validation for single provider:', providerId);
+  console.info('[ValidationService] Starting single provider validation:', providerId);
 
-    // Create a new validation run
-    const { data: run, error: runErr } = await supabase
-      .from('validation_runs')
-      .insert({
-        total_providers: 1,
-        started_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+  // Create a validation run for single provider
+  const { data: run, error: runErr } = await supabase
+    .from('validation_runs')
+    .insert({
+      total_providers: 1,
+      started_at: new Date().toISOString()
+    })
+    .select()
+    .single();
 
-    if (runErr) {
-      throw new Error(`Failed to create validation run: ${runErr.message || runErr}`);
-    }
-
-    const runId = run.id;
-    console.info('[Validation Service] Created validation run:', runId);
-
-    // Fetch the provider data
-    const { data: provider, error: fetchErr } = await supabase
-      .from('providers')
-      .select('*')
-      .eq('id', providerId)
-      .single();
-
-    if (fetchErr || !provider) {
-      throw new Error(`Failed to fetch provider: ${fetchErr?.message || 'Not found'}`);
-    }
-
-    // Run validation workflow
-    let needsReview = false;
-    try {
-      const result = await runValidationForProvider(provider, runId);
-      needsReview = result.needsReview;
-    } catch (err) {
-      console.error('[Validation Service] Error validating provider', providerId, err.message || err);
-    }
-
-    // Update run progress
-    await supabase
-      .from('validation_runs')
-      .update({
-        processed: 1,
-        success_count: needsReview ? 0 : 1,
-        needs_review_count: needsReview ? 1 : 0,
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', runId);
-
-    console.info('[Validation Service] Validation complete for provider', providerId);
-
-    // Send email notifications
-    try {
-      console.info('[Validation Service] Sending admin summary email');
-      await sendAdminValidationSummaryEmail(runId, providerId);
-    } catch (emailErr) {
-      console.error('[Validation Service] Failed to send admin email:', emailErr.message);
-      // Don't throw - email failure shouldn't break validation
-    }
-
-    try {
-      console.info('[Validation Service] Sending provider discrepancy email');
-      await sendProviderDiscrepancyEmail(providerId, runId);
-    } catch (emailErr) {
-      console.error('[Validation Service] Failed to send provider email:', emailErr.message);
-      // Don't throw - email failure shouldn't break validation
-    }
-
-    console.info('[Validation Service] Validation and notifications complete for provider', providerId);
-
-    return runId;
-  } catch (error) {
-    console.error('[Validation Service] Fatal error in runValidationForSingleProvider:', error.message || error);
-    throw error;
+  if (runErr) {
+    throw new Error(`Failed to create validation run: ${runErr.message}`);
   }
-}
 
+  // Fetch provider
+  const { data: provider, error: provErr } = await supabase
+    .from('providers')
+    .select('*')
+    .eq('id', providerId)
+    .single();
+
+  if (provErr || !provider) {
+    throw new Error(`Provider ${providerId} not found`);
+  }
+
+  // Run LangGraph validation
+  const result = await runValidationForProvider(provider, run.id);
+
+  // Update run with results
+  await supabase
+    .from('validation_runs')
+    .update({
+      completed_at: new Date().toISOString(),
+      providers_success: result.needsReview ? 0 : 1,
+      providers_needs_review: result.needsReview ? 1 : 0
+    })
+    .eq('id', run.id);
+
+  console.info(`[ValidationService] Single provider validation complete - Needs Review: ${result.needsReview}`);
+
+  return run.id;
+}

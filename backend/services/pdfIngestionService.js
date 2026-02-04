@@ -383,7 +383,6 @@ export async function ingestPdf(pdfBuffer, fileName) {
     // Step 7: Trigger validation workflow for inserted providers
     console.info('[PDF Ingestion] Triggering validation workflow for', insertedProviderIds.length, 'providers');
     const runId = await runValidationForImportedProviders(insertedProviderIds);
-    console.info('[PDF Ingestion] Validation run created:', runId);
 
     return {
       providersInserted,
