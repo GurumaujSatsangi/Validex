@@ -77,6 +77,8 @@ export async function dataValidationNode(state) {
           field,
           issue: "MISSING_REQUIRED_FIELD",
           severity: "HIGH",
+          sourceType: "INPUT_VALIDATION",
+          confidence: 0.6,
         });
       }
     }
@@ -89,6 +91,9 @@ export async function dataValidationNode(state) {
         field: "phone",
         issue: "INVALID_PHONE_FORMAT",
         severity: "HIGH",
+        sourceType: "INPUT_VALIDATION",
+        suggestedValue: normalizedPhone || null,
+        confidence: 0.65,
       });
     }
 
@@ -99,6 +104,8 @@ export async function dataValidationNode(state) {
         field: "address",
         issue: "INVALID_ADDRESS_FORMAT",
         severity: "HIGH",
+        sourceType: "INPUT_VALIDATION",
+        confidence: 0.6,
       });
     }
 
@@ -109,6 +116,9 @@ export async function dataValidationNode(state) {
         field: "state",
         issue: "INVALID_STATE",
         severity: "HIGH",
+        sourceType: "INPUT_VALIDATION",
+        suggestedValue: stateValidation.code || null,
+        confidence: 0.7,
       });
     }
 
@@ -119,6 +129,8 @@ export async function dataValidationNode(state) {
         field: "npi",
         issue: "INVALID_NPI_FORMAT",
         severity: "MEDIUM",
+        sourceType: "INPUT_VALIDATION",
+        confidence: 0.6,
       });
     }
 

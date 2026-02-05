@@ -5,6 +5,29 @@ import { sendAdminValidationSummaryEmail, sendRunCompletionEmail } from "../serv
 
 const router = express.Router();
 
+async function updateRunProgressWithRetry(runId, payload, attempt = 1) {
+  const maxAttempts = 2;
+  const { error } = await supabase
+    .from("validation_runs")
+    .update(payload)
+    .eq("id", runId);
+
+  if (error) {
+    console.warn(`[ValidationRuns] Progress update attempt ${attempt} failed`, { runId, error: error.message || error });
+    if (attempt < maxAttempts) {
+      // Fallback: update only UI-known columns
+      const uiPayload = {
+        processed: payload.processed,
+        success_count: payload.success_count,
+        needs_review_count: payload.needs_review_count,
+      };
+      return updateRunProgressWithRetry(runId, uiPayload, attempt + 1);
+    }
+    return { error };
+  }
+  return { error: null };
+}
+
 router.get("/", async (req, res) => {
   const { data, error } = await supabase
     .from("validation_runs")
@@ -41,22 +64,28 @@ router.post("/", async (req, res) => {
     let processed = 0;
     let successCount = 0;
     let needsReviewCount = 0;
+    let failedCount = 0;
 
     for (const p of providers) {
-      const result = await runValidationForProvider(p, runId);
+      try {
+        const result = await runValidationForProvider(p, runId);
 
-      processed++;
-      if (result.needsReview) needsReviewCount++;
-      else successCount++;
+        processed++;
+        if (result.needsReview) needsReviewCount++;
+        else successCount++;
+      } catch (providerErr) {
+        processed++;
+        needsReviewCount++;
+        failedCount++;
+        console.error(`[ValidationRuns] Provider ${p.id} failed validation:`, providerErr?.message || providerErr);
+      }
 
-      const updateRes = await supabase
-        .from("validation_runs")
-        .update({
-          processed,
-          success_count: successCount,
-          needs_review_count: needsReviewCount
-        })
-        .eq("id", runId);
+      const progressPayload = {
+        processed,
+        success_count: successCount,
+        needs_review_count: needsReviewCount,
+      };
+      await updateRunProgressWithRetry(runId, progressPayload);
 
       console.log(`[ValidationRuns] Updated run progress: ${processed}/${total}, Success: ${successCount}, NeedsReview: ${needsReviewCount}`);
     }
@@ -64,9 +93,13 @@ router.post("/", async (req, res) => {
     console.log(`[ValidationRuns] All validation complete. Setting completed_at for run ${runId}`);
     
     const completedAt = new Date().toISOString();
+    const completionPayload = {
+      completed_at: completedAt,
+      status: 'COMPLETED',
+    };
     const completeRes = await supabase
       .from("validation_runs")
-      .update({ completed_at: completedAt })
+      .update(completionPayload)
       .eq("id", runId);
 
     if (completeRes.error) {
@@ -75,12 +108,11 @@ router.post("/", async (req, res) => {
       console.log(`[ValidationRuns] Successfully set completed_at for run ${runId}`);
     }
 
-    // Best-effort status update (won't block completion if column doesn't exist)
+    // Best-effort optional secondary status update (compat with legacy schemas)
     const statusRes = await supabase
       .from("validation_runs")
       .update({ status: 'COMPLETED' })
       .eq("id", runId);
-
     if (statusRes.error) {
       console.warn(`[ValidationRuns] status update skipped/failed:`, statusRes.error?.message || statusRes.error);
     }
