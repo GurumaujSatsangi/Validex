@@ -186,9 +186,31 @@ export async function qualityAssuranceNode(state) {
   if (conflictCount > 0) reviewReasons.push("DATA_CONFLICTS");
   if (state.validationResults?.hardReject) reviewReasons.push("MISSING_OR_INVALID_REQUIRED_FIELDS");
 
+  // Deduplicate discrepancies: keep only highest-confidence suggestion per field
+  const fieldSuggestionMap = new Map();
+
+  for (const disc of validationDiscrepancies) {
+    const field = disc.field || "unknown";
+    const confidence = disc.confidence || 0;
+    
+    if (fieldSuggestionMap.has(field)) {
+      const existing = fieldSuggestionMap.get(field);
+      // Only replace if this suggestion has higher confidence
+      if (confidence > (existing.confidence || 0)) {
+        fieldSuggestionMap.set(field, disc);
+      }
+      // Otherwise skip this duplicate
+    } else {
+      // Add as first suggestion for this field
+      fieldSuggestionMap.set(field, disc);
+    }
+  }
+
+  const deduplicatedDiscrepancies = Array.from(fieldSuggestionMap.values());
+
   return {
     ...state,
-    validationDiscrepancies,
+    validationDiscrepancies: deduplicatedDiscrepancies,
     confidence: {
       finalScore: finalConfidence,
       contributions,
