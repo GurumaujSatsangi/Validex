@@ -90,6 +90,22 @@ document.getElementById('startRun')?.addEventListener('click', async () => {
                 statusText.textContent = `Processing: ${latestRun.processed || 0} of ${latestRun.total_providers || 0} providers`;
               }
               
+              // Check if validation is complete
+              if (latestRun.completed_at) {
+                if (pollInterval) clearInterval(pollInterval);
+                Swal.close();
+                
+                await loadRuns();
+
+                Swal.fire({ 
+                  icon: 'success', 
+                  title: 'Validation Run Complete!', 
+                  html: `<p>Run ID: <code>${escapeHtml(String(latestRun.id || ''))}</code></p><p>Success: ${latestRun.success_count || 0} | Needs Review: ${latestRun.needs_review_count || 0}</p>`,
+                  confirmButtonText: 'OK'
+                });
+                return;
+              }
+              
               // Calculate ETA
               if (etaText && latestRun.processed > 0) {
                 const elapsed = Date.now() - startTime;

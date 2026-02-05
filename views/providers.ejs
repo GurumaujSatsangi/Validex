@@ -54,10 +54,10 @@
           </div>
         </div>
         <div class="topbar-right">
-          <button id="deleteAllProvidersBtn" class="btn btn-danger">
-  <i class="bi bi-trash"></i> Delete All
-</button>
-          <button id="downloadCsvBtn" class="btn btn-success">
+          <button id="deleteAllProvidersBtn" class="btn btn-danger" style="padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 0.875rem; display: flex; align-items: center; gap: 6px; border: none; cursor: pointer; transition: all 0.2s ease;">
+            <i class="bi bi-trash"></i> Delete All
+          </button>
+          <button id="downloadCsvBtn" class="btn btn-success" style="padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 0.875rem; display: flex; align-items: center; gap: 6px; border: none; cursor: pointer; transition: all 0.2s ease;">
             <i class="bi bi-download"></i> Download CSV
           </button>
           <div class="topbar-time">
@@ -76,6 +76,47 @@
             </div>
           </div>
           <div class="card-body">
+            <!-- Search and Filter Bar -->
+            <div style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #e0e0e0;">
+              <div style="margin-bottom: 16px;">
+                <div style="display: flex; gap: 12px; align-items: center;">
+                  <div style="flex: 1;">
+                    <input 
+                      type="text" 
+                      id="providerSearch" 
+                      placeholder="Search by name, NPI ID, or specialty..."
+                      style="width: 100%; padding: 10px 14px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 14px;"
+                    >
+                  </div>
+                  <button id="searchBtn" class="btn btn-primary" style="padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 0.875rem; display: flex; align-items: center; gap: 6px; border: none; cursor: pointer; transition: all 0.2s ease;">
+                    <i class="bi bi-search"></i> Search
+                  </button>
+                  <button id="clearSearchBtn" class="btn btn-secondary" style="padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 0.875rem; display: flex; align-items: center; gap: 6px; border: 1px solid var(--border-light); cursor: pointer; transition: all 0.2s ease;">
+                    <i class="bi bi-x-circle"></i> Clear
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Filter Buttons -->
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <span style="font-size: 14px; font-weight: 600; color: #666;">Filter by:</span>
+                <button class="filter-btn" data-filter="all" style="padding: 8px 16px; border: 1px solid #d0d0d0; border-radius: 8px; background: var(--bg-accent); cursor: pointer; font-size: 0.875rem; font-weight: 600; color: #333; transition: all 0.2s; display: flex; align-items: center; gap: 6px;">
+                  <i class="bi bi-funnel"></i> All
+                </button>
+                <button class="filter-btn" data-filter="has-issues" style="padding: 8px 16px; border: 1px solid #d0d0d0; border-radius: 8px; background: white; cursor: pointer; font-size: 0.875rem; font-weight: 600; color: #333; transition: all 0.2s; display: flex; align-items: center; gap: 6px;">
+                  <i class="bi bi-exclamation-circle"></i> Has Issues
+                </button>
+                <button class="filter-btn" data-filter="no-issues" style="padding: 8px 16px; border: 1px solid #d0d0d0; border-radius: 8px; background: white; cursor: pointer; font-size: 0.875rem; font-weight: 600; color: #333; transition: all 0.2s; display: flex; align-items: center; gap: 6px;">
+                  <i class="bi bi-check-circle"></i> No Issues
+                </button>
+              </div>
+            </div>
+            
+            <!-- Results Count -->
+            <div style="margin-bottom: 16px; font-size: 14px; color: #666;">
+              Showing <span id="resultsCount">0</span> provider(s)
+            </div>
+            
             <div id="providersContainer">
               <div class="text-center">
                 <div class="spinner"></div>

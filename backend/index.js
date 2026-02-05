@@ -12,6 +12,7 @@ import providerRoutes from "./routes/providers.js";
 import validationRunRoutes from "./routes/validationRuns.js";
 import issueRoutes from "./routes/issues.js";
 import exportRoutes from "./routes/export.js";
+import { sendRunCompletionEmail } from "./services/agents/emailGenerationAgent.js";
 import { supabase } from "./supabaseClient.js";
 
 dotenv.config();
@@ -58,6 +59,31 @@ app.get("/runs", async (req, res) => {
   } catch (err) {
     console.error('Error fetching runs', err);
     res.render("runs", { runs: [] });
+  }
+});
+
+// Test endpoint to check if emails are working
+app.get("/debug/test-smtp", async (req, res) => {
+  try {
+    console.log("[Debug SMTP] SMTP_HOST:", process.env.SMTP_HOST);
+    console.log("[Debug SMTP] SMTP_USER:", process.env.SMTP_USER);
+    console.log("[Debug SMTP] SMTP_PASSWORD set:", !!process.env.SMTP_PASSWORD);
+    
+    const { data: runs } = await supabase
+      .from("validation_runs")
+      .select("*")
+      .order("started_at", { ascending: false })
+      .limit(1);
+
+    if (!runs || runs.length === 0) {
+      return res.json({ error: "No validation runs found", smtp_config: { host: process.env.SMTP_HOST, user: process.env.SMTP_USER } });
+    }
+
+    await sendRunCompletionEmail(runs[0].id, ["test"]);
+    res.json({ success: true, message: "Test email sent" });
+  } catch (err) {
+    console.error("[Debug SMTP] Error:", err.message);
+    res.status(500).json({ error: err.message, smtp_host: process.env.SMTP_HOST });
   }
 });
 

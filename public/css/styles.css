@@ -764,29 +764,36 @@ select.form-control {
    ============================================== */
 
 .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 60px 20px;
+  padding: 80px 40px;
+  min-height: 300px;
 }
 
 .empty-icon {
-  font-size: 4rem;
-  color: var(--text-muted);
-  margin-bottom: 16px;
-  opacity: 0.5;
+  font-size: 5rem;
+  color: #28a745;
+  margin-bottom: 24px;
+  opacity: 1;
 }
 
 .empty-title {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.5rem;
+  font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  letter-spacing: -0.5px;
 }
 
 .empty-text {
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: var(--text-secondary);
-  max-width: 400px;
+  max-width: 500px;
   margin: 0 auto;
+  line-height: 1.6;
 }
 
 /* ==============================================

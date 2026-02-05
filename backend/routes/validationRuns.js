@@ -1,6 +1,7 @@
 import express from "express";
 import { supabase } from "../supabaseClient.js";
 import { runValidationForProvider } from "../services/validationService.js";
+import { sendAdminValidationSummaryEmail, sendRunCompletionEmail } from "../services/agents/emailGenerationAgent.js";
 
 const router = express.Router();
 
@@ -15,51 +16,80 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const { data: providers, error: loadErr } = await supabase
-    .from("providers")
-    .select("*");
+  try {
+    const { data: providers, error: loadErr } = await supabase
+      .from("providers")
+      .select("*");
 
-  if (loadErr) return res.status(500).json({ error: "Failed to load providers" });
+    if (loadErr) return res.status(500).json({ error: "Failed to load providers" });
 
-  const total = providers.length;
+    const total = providers.length;
+    console.log(`[ValidationRuns] Starting validation run for ${total} providers`);
 
-  const { data: run, error: runErr } = await supabase
-    .from("validation_runs")
-    .insert({ total_providers: total, started_at: new Date().toISOString() })
-    .select()
-    .single();
-
-  if (runErr) return res.status(500).json({ error: "Could not start run" });
-
-  const runId = run.id;
-
-  let processed = 0;
-  let successCount = 0;
-  let needsReviewCount = 0;
-
-  for (const p of providers) {
-    const result = await runValidationForProvider(p, runId);
-
-    processed++;
-    if (result.needsReview) needsReviewCount++;
-    else successCount++;
-
-    await supabase
+    const { data: run, error: runErr } = await supabase
       .from("validation_runs")
-      .update({
-        processed,
-        success_count: successCount,
-        needs_review_count: needsReviewCount
-      })
+      .insert({ total_providers: total, started_at: new Date().toISOString() })
+      .select()
+      .single();
+
+    if (runErr) return res.status(500).json({ error: "Could not start run" });
+
+    const runId = run.id;
+    console.log(`[ValidationRuns] Created run with ID: ${runId}`);
+
+    let processed = 0;
+    let successCount = 0;
+    let needsReviewCount = 0;
+
+    for (const p of providers) {
+      const result = await runValidationForProvider(p, runId);
+
+      processed++;
+      if (result.needsReview) needsReviewCount++;
+      else successCount++;
+
+      const updateRes = await supabase
+        .from("validation_runs")
+        .update({
+          processed,
+          success_count: successCount,
+          needs_review_count: needsReviewCount
+        })
+        .eq("id", runId);
+
+      console.log(`[ValidationRuns] Updated run progress: ${processed}/${total}, Success: ${successCount}, NeedsReview: ${needsReviewCount}`);
+    }
+
+    console.log(`[ValidationRuns] All validation complete. Setting completed_at for run ${runId}`);
+    
+    const completeRes = await supabase
+      .from("validation_runs")
+      .update({ completed_at: new Date().toISOString() })
       .eq("id", runId);
+
+    if (completeRes.error) {
+      console.error(`[ValidationRuns] Failed to set completed_at:`, completeRes.error);
+    } else {
+      console.log(`[ValidationRuns] Successfully set completed_at for run ${runId}`);
+    }
+
+    // Send completion email asynchronously (don't wait for it to finish)
+    console.log(`[ValidationRuns] Sending completion email for run ${runId}...`);
+    const allProviderIds = providers.map(p => p.id);
+    sendRunCompletionEmail(runId, allProviderIds)
+      .then(() => {
+        console.log(`[ValidationRuns] Completion email sent successfully for run ${runId}`);
+      })
+      .catch(err => {
+        console.error(`[ValidationRuns] Failed to send completion email for run ${runId}:`, err.message, err.stack);
+      });
+
+    console.log(`[ValidationRuns] Returning response for run ${runId}`);
+    res.json({ runId });
+  } catch (error) {
+    console.error(`[ValidationRuns] Unexpected error:`, error);
+    res.status(500).json({ error: error.message || "Validation failed" });
   }
-
-  await supabase
-    .from("validation_runs")
-    .update({ completed_at: new Date().toISOString() })
-    .eq("id", runId);
-
-  res.json({ runId });
 });
 
 // DELETE /api/validation-runs/:id - remove a run and its issues

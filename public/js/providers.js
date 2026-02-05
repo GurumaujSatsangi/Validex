@@ -1,3 +1,8 @@
+// Store all providers for filtering
+let allProviders = [];
+let currentFilter = 'all';
+let currentSearch = '';
+
 async function loadProviders(){
   try {
     const res = await fetch('/api/providers');
@@ -5,56 +10,183 @@ async function loadProviders(){
     const container = document.getElementById('providersContainer');
     
     if (!json.providers || json.providers.length === 0) {
-      container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle"></i> <div style="flex: 1;">No providers found. <a href="/upload">Upload a CSV</a> to get started.</div></div>';
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">
+            <i class="bi bi-inbox"></i>
+          </div>
+          <div class="empty-title">No Providers Yet</div>
+          <div class="empty-text">No providers found. <a href="/upload" style="color: #007bff; text-decoration: none; font-weight: 500;">Upload a CSV</a> to get started.</div>
+        </div>
+      `;
+      allProviders = [];
+      updateResultsCount(0);
       return;
     }
 
-    const rows = json.providers.map(p => {
-      const nameText = escapeHtml(p.name || '');
-      return `
-        <tr>
-          <td><a href="/provider/${p.id}">${nameText}</a></td>
-          <td>${escapeHtml(p.phone || '')}</td>
-          <td>${escapeHtml(p.email || '')}</td>
-          <td>${escapeHtml(p.city || '')}</td>
-          <td>${escapeHtml(p.state || '')}</td>
-          <td><span class="badge">${p.issues_count ?? 0}</span></td>
-          <td>
-            <div style="display: flex; gap: 8px;">
-              <button class="btn btn-sm btn-info view-provider-btn" data-id="${p.id}"><i class="bi bi-eye"></i> View</button>
-              <button class="btn btn-sm btn-outline-danger delete-provider-btn" data-id="${p.id}"><i class="bi bi-trash"></i> Delete</button>
-            </div>
-          </td>
-        </tr>`;
-    }).join('');
-
-    const html = `
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Phone</th>
-            <th>Email</th>
-            <th>City</th>
-            <th>State</th>
-            <th>Issues</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>
-    `;
-    
-    container.innerHTML = html;
+    allProviders = json.providers;
+    renderProviders(allProviders);
   } catch (err) {
     console.error('Error loading providers:', err);
-    document.getElementById('providersContainer').innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> <div style="flex: 1;">Error loading providers</div></div>';
+    document.getElementById('providersContainer').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon" style="color: #dc3545;">
+          <i class="bi bi-exclamation-triangle"></i>
+        </div>
+        <div class="empty-title">Error Loading Providers</div>
+        <div class="empty-text">Failed to load providers. Please refresh the page and try again.</div>
+      </div>
+    `;
   }
 }
 
+function renderProviders(providers) {
+  const container = document.getElementById('providersContainer');
+  
+  if (!providers || providers.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">
+          <i class="bi bi-search"></i>
+        </div>
+        <div class="empty-title">No Providers Found</div>
+        <div class="empty-text">No providers match your search or filter criteria.</div>
+      </div>
+    `;
+    updateResultsCount(0);
+    return;
+  }
+
+  const rows = providers.map(p => {
+    const nameText = escapeHtml(p.name || '');
+    return `
+      <tr>
+        <td><a href="/provider/${p.id}">${nameText}</a></td>
+        <td>${escapeHtml(p.phone || '')}</td>
+        <td>${escapeHtml(p.email || '')}</td>
+        <td>${escapeHtml(p.city || '')}</td>
+        <td>${escapeHtml(p.state || '')}</td>
+        <td><span class="badge">${p.issues_count ?? 0}</span></td>
+        <td>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-sm btn-info view-provider-btn" data-id="${p.id}" style="padding: 6px 14px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 6px; border: none; cursor: pointer; transition: all 0.2s ease;"><i class="bi bi-eye"></i> View</button>
+            <button class="btn btn-sm btn-outline-danger delete-provider-btn" data-id="${p.id}" style="padding: 6px 14px; border-radius: 8px; font-weight: 600; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #dc3545; cursor: pointer; transition: all 0.2s ease;"><i class="bi bi-trash"></i> Delete</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const html = `
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th>City</th>
+          <th>State</th>
+          <th>Issues</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  `;
+  
+  container.innerHTML = html;
+  updateResultsCount(providers.length);
+}
+
+function updateResultsCount(count) {
+  const resultsCount = document.getElementById('resultsCount');
+  if (resultsCount) {
+    resultsCount.textContent = count;
+  }
+}
+
+function filterProviders() {
+  let filtered = [...allProviders];
+
+  // Apply search filter
+  if (currentSearch.trim()) {
+    const searchLower = currentSearch.toLowerCase();
+    filtered = filtered.filter(p => {
+      const name = (p.name || '').toLowerCase();
+      const npi = (p.npi_id || '').toLowerCase();
+      const specialty = (p.speciality || '').toLowerCase();
+      return name.includes(searchLower) || npi.includes(searchLower) || specialty.includes(searchLower);
+    });
+  }
+
+  // Apply issue filter
+  if (currentFilter === 'has-issues') {
+    filtered = filtered.filter(p => (p.issues_count ?? 0) > 0);
+  } else if (currentFilter === 'no-issues') {
+    filtered = filtered.filter(p => (p.issues_count ?? 0) === 0);
+  }
+
+  renderProviders(filtered);
+}
+
 loadProviders();
+
+// Search functionality
+const searchInput = document.getElementById('providerSearch');
+const searchBtn = document.getElementById('searchBtn');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+if (searchBtn) {
+  searchBtn.addEventListener('click', () => {
+    currentSearch = searchInput.value;
+    filterProviders();
+  });
+}
+
+if (searchInput) {
+  searchInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      currentSearch = searchInput.value;
+      filterProviders();
+    }
+  });
+}
+
+if (clearSearchBtn) {
+  clearSearchBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    currentSearch = '';
+    currentFilter = 'all';
+    updateFilterButtons();
+    renderProviders(allProviders);
+  });
+}
+
+// Filter button functionality
+document.addEventListener('click', (e) => {
+  const filterBtn = e.target.closest('.filter-btn');
+  if (!filterBtn) return;
+
+  currentFilter = filterBtn.dataset.filter;
+  updateFilterButtons();
+  filterProviders();
+});
+
+function updateFilterButtons() {
+  const filterBtns = document.querySelectorAll('.filter-btn');
+  filterBtns.forEach(btn => {
+    if (btn.dataset.filter === currentFilter) {
+      btn.style.background = '#007bff';
+      btn.style.color = 'white';
+      btn.style.borderColor = '#007bff';
+    } else {
+      btn.style.background = 'white';
+      btn.style.color = '#333';
+      btn.style.borderColor = '#d0d0d0';
+    }
+  });
+}
 
 function escapeHtml(text) {
   return String(text)

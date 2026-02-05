@@ -367,3 +367,226 @@ function formatFieldName(fieldName) {
     .replace(/_/g, ' ')
     .replace(/\b\w/g, l => l.toUpperCase());
 }
+
+/**
+ * Send validation run completion summary email to admin
+ * @param {string} runId - Validation run ID
+ * @param {array} providerIds - Array of provider IDs validated in this run
+ */
+export async function sendRunCompletionEmail(runId, providerIds) {
+  console.log(`[Email Agent] Sending run completion email for run ${runId} with ${providerIds.length} providers`);
+
+  try {
+    // Fetch validation run details
+    const { data: run, error: runErr } = await supabase
+      .from('validation_runs')
+      .select('*')
+      .eq('id', runId)
+      .single();
+
+    if (runErr || !run) {
+      console.error('[Email Agent] Failed to fetch validation run:', runErr?.message);
+      return;
+    }
+
+    console.log(`[Email Agent] Fetched run data: total=${run.total_providers}, success=${run.success_count}, needs_review=${run.needs_review_count}`);
+
+    // Fetch validation issues summary
+    const { data: issues, error: issuesErr } = await supabase
+      .from('validation_issues')
+      .select('*')
+      .eq('run_id', runId);
+
+    if (issuesErr) {
+      console.error('[Email Agent] Failed to fetch validation issues:', issuesErr.message);
+      return;
+    }
+
+    const issuesList = issues || [];
+    const autoAcceptCount = issuesList.filter(i => i.action === 'AUTO_ACCEPT').length;
+    const needsReviewCount = issuesList.filter(i => i.action === 'NEEDS_REVIEW').length;
+    
+    console.log(`[Email Agent] Summary - Total issues: ${issuesList.length}, AutoAccept: ${autoAcceptCount}, NeedsReview: ${needsReviewCount}`);
+
+    // Generate email content
+    const subject = `Validex Validation Run Complete - Run ID: ${runId}`;
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 5px; margin-bottom: 20px; }
+    .section { margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #667eea; }
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 15px 0; }
+    .stat-box { background: white; padding: 15px; border-radius: 4px; text-align: center; border-top: 3px solid #667eea; }
+    .stat-label { font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+    .stat-value { font-size: 32px; font-weight: bold; color: #667eea; }
+    .success { border-top-color: #28a745; }
+    .success .stat-value { color: #28a745; }
+    .warning { border-top-color: #ffc107; }
+    .warning .stat-value { color: #ff9800; }
+    .danger { border-top-color: #dc3545; }
+    .danger .stat-value { color: #dc3545; }
+    .summary-table { width: 100%; border-collapse: collapse; background: white; }
+    .summary-table th { background: #667eea; color: white; padding: 12px; text-align: left; }
+    .summary-table td { padding: 12px; border-bottom: 1px solid #e0e0e0; }
+    .summary-table tr:hover { background: #f5f5f5; }
+    .footer { margin-top: 30px; padding: 20px; background: #e9ecef; border-radius: 5px; font-size: 13px; text-align: center; }
+    .timestamp { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Validation Run Complete</h1>
+      <p style="margin: 10px 0 0 0;">Comprehensive provider directory validation completed</p>
+    </div>
+
+    <div class="section">
+      <h2>Run Overview</h2>
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="stat-label">Total Providers</div>
+          <div class="stat-value">${run.total_providers || 0}</div>
+        </div>
+        <div class="stat-box success">
+          <div class="stat-label">No Issues Found</div>
+          <div class="stat-value">${(run.success_count || 0)}</div>
+        </div>
+        <div class="stat-box warning">
+          <div class="stat-label">Needs Review</div>
+          <div class="stat-value">${(run.needs_review_count || 0)}</div>
+        </div>
+        <div class="stat-box danger">
+          <div class="stat-label">Total Issues</div>
+          <div class="stat-value">${issuesList.length}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Validation Results</h2>
+      <table class="summary-table">
+        <tr>
+          <th>Metric</th>
+          <th>Count</th>
+          <th>Details</th>
+        </tr>
+        <tr>
+          <td>Total Providers Validated</td>
+          <td>${run.total_providers || 0}</td>
+          <td>All providers in the system</td>
+        </tr>
+        <tr>
+          <td>Providers with No Issues</td>
+          <td>${run.success_count || 0}</td>
+          <td>Data is accurate and complete</td>
+        </tr>
+        <tr>
+          <td>Providers Needing Review</td>
+          <td>${run.needs_review_count || 0}</td>
+          <td>Has issues that require attention</td>
+        </tr>
+        <tr>
+          <td>Total Issues Found</td>
+          <td>${issuesList.length}</td>
+          <td>${autoAcceptCount} auto-accept, ${needsReviewCount} needs review</td>
+        </tr>
+        <tr>
+          <td>Auto-Accept Issues</td>
+          <td>${autoAcceptCount}</td>
+          <td>High confidence corrections</td>
+        </tr>
+        <tr>
+          <td>Needs Review Issues</td>
+          <td>${needsReviewCount}</td>
+          <td>Require manual verification</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Next Steps</h2>
+      <ul>
+        <li><strong>Review Issues:</strong> Access the validation dashboard to review all ${needsReviewCount} issues requiring manual confirmation</li>
+        <li><strong>Contact Providers:</strong> Send provider discrepancy emails for high-priority updates</li>
+        <li><strong>Auto-Accept Changes:</strong> Review and apply ${autoAcceptCount} high-confidence corrections</li>
+        <li><strong>Export Results:</strong> Download validated provider data once all issues are resolved</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Run Details</h2>
+      <table class="summary-table">
+        <tr>
+          <th>Property</th>
+          <th>Value</th>
+        </tr>
+        <tr>
+          <td>Run ID</td>
+          <td><code>${escapeHtml(runId)}</code></td>
+        </tr>
+        <tr>
+          <td>Started At</td>
+          <td><span class="timestamp">${run.started_at ? new Date(run.started_at).toLocaleString() : 'N/A'}</span></td>
+        </tr>
+        <tr>
+          <td>Completed At</td>
+          <td><span class="timestamp">${run.completed_at ? new Date(run.completed_at).toLocaleString() : 'N/A'}</span></td>
+        </tr>
+        <tr>
+          <td>Duration</td>
+          <td>
+            ${run.started_at && run.completed_at ? 
+              (() => {
+                const startTime = new Date(run.started_at).getTime();
+                const endTime = new Date(run.completed_at).getTime();
+                const durationMs = endTime - startTime;
+                const minutes = Math.floor(durationMs / 60000);
+                const seconds = Math.floor((durationMs % 60000) / 1000);
+                return minutes > 0 ? minutes + 'm ' + seconds + 's' : seconds + 's';
+              })()
+              : 'N/A'
+            }
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="footer">
+      <p><strong>Validex Provider Directory Validation System</strong></p>
+      <p>This is an automated notification. For support, contact: ${escapeHtml(ADMIN_EMAIL)}</p>
+      <p style="margin-top: 10px;"><em>Run ID: ${escapeHtml(runId)}</em></p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    // Send email
+    const transporter = createTransporter();
+    if (!transporter) {
+      console.error('[Email Agent] Cannot send email - transporter not configured');
+      return;
+    }
+
+    console.log(`[Email Agent] Creating mail options for ${ADMIN_EMAIL}`);
+    const mailOptions = {
+      from: FROM_EMAIL,
+      to: ADMIN_EMAIL,
+      subject,
+      html: htmlBody
+    };
+
+    console.log(`[Email Agent] Attempting to send email with subject: "${subject}"`);
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`[Email Agent] Email sent successfully! Result:`, result);
+
+  } catch (err) {
+    console.error('[Email Agent] Failed to send run completion email:', err.message);
+    console.error('[Email Agent] Error stack:', err.stack);
+  }
+}
