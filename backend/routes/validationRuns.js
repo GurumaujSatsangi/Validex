@@ -16,6 +16,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
+  console.log(`[ValidationRuns] POST /api/validation-runs hit at ${new Date().toISOString()}`);
   try {
     const { data: providers, error: loadErr } = await supabase
       .from("providers")
@@ -62,9 +63,10 @@ router.post("/", async (req, res) => {
 
     console.log(`[ValidationRuns] All validation complete. Setting completed_at for run ${runId}`);
     
+    const completedAt = new Date().toISOString();
     const completeRes = await supabase
       .from("validation_runs")
-      .update({ completed_at: new Date().toISOString() })
+      .update({ completed_at: completedAt })
       .eq("id", runId);
 
     if (completeRes.error) {
@@ -73,19 +75,28 @@ router.post("/", async (req, res) => {
       console.log(`[ValidationRuns] Successfully set completed_at for run ${runId}`);
     }
 
-    // Send completion email asynchronously (don't wait for it to finish)
+    // Best-effort status update (won't block completion if column doesn't exist)
+    const statusRes = await supabase
+      .from("validation_runs")
+      .update({ status: 'COMPLETED' })
+      .eq("id", runId);
+
+    if (statusRes.error) {
+      console.warn(`[ValidationRuns] status update skipped/failed:`, statusRes.error?.message || statusRes.error);
+    }
+
+    // Send completion email SYNCHRONOUSLY before responding
     console.log(`[ValidationRuns] Sending completion email for run ${runId}...`);
     const allProviderIds = providers.map(p => p.id);
-    sendRunCompletionEmail(runId, allProviderIds)
-      .then(() => {
-        console.log(`[ValidationRuns] Completion email sent successfully for run ${runId}`);
-      })
-      .catch(err => {
-        console.error(`[ValidationRuns] Failed to send completion email for run ${runId}:`, err.message, err.stack);
-      });
+    try {
+      await sendRunCompletionEmail(runId, allProviderIds);
+      console.log(`[ValidationRuns] Email sent successfully for run ${runId}`);
+    } catch (emailErr) {
+      console.error(`[ValidationRuns] Email send error for run ${runId}:`, emailErr.message);
+    }
 
-    console.log(`[ValidationRuns] Returning response for run ${runId}`);
-    res.json({ runId });
+    console.log(`[ValidationRuns] Validation run ${runId} fully complete. Responding to client.`);
+    res.json({ runId, status: 'COMPLETED' });
   } catch (error) {
     console.error(`[ValidationRuns] Unexpected error:`, error);
     res.status(500).json({ error: error.message || "Validation failed" });

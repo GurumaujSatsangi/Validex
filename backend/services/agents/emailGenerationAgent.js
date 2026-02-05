@@ -6,29 +6,46 @@
 import nodemailer from 'nodemailer';
 import { supabase } from '../../supabaseClient.js';
 
-// SMTP Configuration
-const SMTP_CONFIG = {
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER || 'your-email@gmail.com',
-    pass: process.env.SMTP_PASSWORD || 'your-app-password'
-  }
-};
+// SMTP Configuration - resolved at runtime, not at module load time
+function getSMTPConfig() {
+  return {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+    auth: {
+      user: process.env.SMTP_USER || 'your-email@gmail.com',
+      pass: process.env.SMTP_PASSWORD || 'your-app-password'
+    }
+  };
+}
 
-const ADMIN_EMAIL = 'gurumaujsatsangi@gmail.com';
-const FROM_EMAIL = process.env.SMTP_FROM || 'noreply@validex.com';
+function getAdminEmail() {
+  return process.env.ADMIN_EMAIL || 'gurumaujsatsangi@gmail.com';
+}
+
+function getFromEmail() {
+  return process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@validex.com';
+}
 
 /**
  * Create nodemailer transporter
  */
 function createTransporter() {
   try {
+    const SMTP_CONFIG = getSMTPConfig();
+    console.log('[Email Agent] Creating transporter with SMTP config:');
+    console.log('[Email Agent]   HOST:', SMTP_CONFIG.host);
+    console.log('[Email Agent]   PORT:', SMTP_CONFIG.port);
+    console.log('[Email Agent]   SECURE:', SMTP_CONFIG.secure);
+    console.log('[Email Agent]   USER:', SMTP_CONFIG.auth.user);
+    console.log('[Email Agent]   PASS:', SMTP_CONFIG.auth.pass ? '***SET***' : '***NOT SET***');
+    
     const transporter = nodemailer.createTransport(SMTP_CONFIG);
+    console.log('[Email Agent] Transporter created successfully');
     return transporter;
   } catch (err) {
     console.error('[Email Agent] Failed to create transporter:', err.message);
+    console.error('[Email Agent] Error stack:', err.stack);
     return null;
   }
 }
@@ -163,13 +180,13 @@ export async function sendAdminValidationSummaryEmail(runId, providerId) {
     }
 
     await transporter.sendMail({
-      from: FROM_EMAIL,
-      to: ADMIN_EMAIL,
+      from: getFromEmail(),
+      to: getAdminEmail(),
       subject,
       html: htmlBody
     });
 
-    console.log(`[Email Agent] Admin summary email sent successfully to ${ADMIN_EMAIL}`);
+    console.log(`[Email Agent] Admin summary email sent successfully to ${getAdminEmail()}`);
 
   } catch (err) {
     console.error('[Email Agent] Failed to send admin summary email:', err.message);
@@ -331,11 +348,11 @@ export async function sendProviderDiscrepancyEmail(providerId, runId) {
     }
 
     await transporter.sendMail({
-      from: FROM_EMAIL,
+      from: getFromEmail(),
       to: providerEmail,
       subject,
       html: htmlBody,
-      replyTo: ADMIN_EMAIL
+      replyTo: getAdminEmail()
     });
 
     console.log(`[Email Agent] Provider discrepancy email sent successfully to ${providerEmail}`);
@@ -558,7 +575,7 @@ export async function sendRunCompletionEmail(runId, providerIds) {
 
     <div class="footer">
       <p><strong>Validex Provider Directory Validation System</strong></p>
-      <p>This is an automated notification. For support, contact: ${escapeHtml(ADMIN_EMAIL)}</p>
+      <p>This is an automated notification. For support, contact: ${escapeHtml(getAdminEmail())}</p>
       <p style="margin-top: 10px;"><em>Run ID: ${escapeHtml(runId)}</em></p>
     </div>
   </div>
@@ -573,10 +590,10 @@ export async function sendRunCompletionEmail(runId, providerIds) {
       return;
     }
 
-    console.log(`[Email Agent] Creating mail options for ${ADMIN_EMAIL}`);
+    console.log(`[Email Agent] Creating mail options for ${getAdminEmail()}`);
     const mailOptions = {
-      from: FROM_EMAIL,
-      to: ADMIN_EMAIL,
+      from: getFromEmail(),
+      to: getAdminEmail(),
       subject,
       html: htmlBody
     };
