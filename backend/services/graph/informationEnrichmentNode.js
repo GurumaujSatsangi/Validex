@@ -9,6 +9,10 @@
  */
 
 import { getNpiDataByNpiId, searchNpiByName } from "../tools/npiClient.js";
+import { scrapeTrueLensWebsite } from "../tools/trueLensWebsiteScraper.js";
+import { scrapeProviderInfo } from "../tools/webScraper.js";
+
+export async function informationEnrichmentNode(state) {
   console.log("[InfoEnrichment] Starting enrichment for provider:", state.providerId);
 
   const input = state.normalizedData || state.inputData || {};
@@ -100,12 +104,5 @@ import { getNpiDataByNpiId, searchNpiByName } from "../tools/npiClient.js";
     validationSources,
     errorLog,
     workflowStatus: "IN_PROGRESS",
-  };
-    ...state,
-    poiMetadata: enrichmentData.poiMetadata,
-    enrichedProviderProfile: enrichmentData.enrichedProviderProfile,
-    geoCoordinates: enrichmentData.geoCoordinates,
-    educationDetails: enrichmentData.educationDetails,
-    validationSources: enrichmentSources,
   };
 }
