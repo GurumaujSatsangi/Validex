@@ -20,7 +20,7 @@ let apiKey = null;
 /**
  * Initialize LangSmith client
  */
-export function initLangSmith() {
+export function initLangSmith(silent = false) {
   if (isInitialized && client) return client;
 
   try {
@@ -28,12 +28,16 @@ export function initLangSmith() {
     const endpoint = process.env.LANGSMITH_ENDPOINT || "https://api.smith.langchain.com";
     projectName = process.env.LANGSMITH_PROJECT || "truelens-validation";
 
-    console.log(`[LangSmith] Initializing...`);
-    console.log(`[LangSmith]   Endpoint: ${endpoint}`);
-    console.log(`[LangSmith]   Project: ${projectName}`);
+    if (!silent) {
+      console.log(`[LangSmith] Initializing...`);
+      console.log(`[LangSmith]   Endpoint: ${endpoint}`);
+      console.log(`[LangSmith]   Project: ${projectName}`);
+    }
 
     if (!apiKey) {
-      console.log("[LangSmith] ⚠ LANGSMITH_API_KEY not set. Using local tracing only.");
+      if (!silent) {
+        console.log("[LangSmith] ⚠ LANGSMITH_API_KEY not set. Using local tracing only.");
+      }
       isInitialized = true;
       return null;
     }
@@ -45,8 +49,10 @@ export function initLangSmith() {
     });
     
     isInitialized = true;
-    console.log(`[LangSmith] ✓ Connected to LangSmith`);
-    console.log(`[LangSmith]   Dashboard: https://smith.langchain.com/`);
+    if (!silent) {
+      console.log(`[LangSmith] ✓ Connected to LangSmith`);
+      console.log(`[LangSmith]   Dashboard: https://smith.langchain.com/`);
+    }
     return client;
   } catch (error) {
     console.error("[LangSmith] ✗ Initialization error:", error.message);
@@ -58,9 +64,9 @@ export function initLangSmith() {
 /**
  * Get or initialize LangSmith client
  */
-export function getLangSmithClient() {
+export function getLangSmithClient(silent = false) {
   if (!isInitialized) {
-    initLangSmith();
+    initLangSmith(silent);
   }
   return client;
 }
@@ -277,5 +283,169 @@ export function exportExecutionTrace(nodeExecutionOrder, workflowId, providerId)
   };
 
   return traceData;
+}
+
+/**
+ * Fetch latency and token usage metrics for a LangSmith run
+ * @param {string} parentRunId - The parent workflow run ID
+ * @param {object} pricingConfig - Optional pricing configuration
+ * @param {number} pricingConfig.input_cost_per_1k - Cost per 1K input tokens (default: 0.001)
+ * @param {number} pricingConfig.output_cost_per_1k - Cost per 1K output tokens (default: 0.002)
+ * @returns {Promise<object>} Latency, token usage, and cost metrics
+ */
+export async function fetchRunMetrics(parentRunId, pricingConfig = {}) {
+  const {
+    input_cost_per_1k = 0.001,
+    output_cost_per_1k = 0.002,
+  } = pricingConfig;
+
+  // Get or initialize the LangSmith client (silent mode for metrics)
+  const langClient = getLangSmithClient(true);
+
+  if (!langClient) {
+    console.error("[LangSmith Metrics] ✗ LangSmith client not initialized");
+    return null;
+  }
+
+  try {
+    // Fetch parent run using client SDK
+    const parentRun = await langClient.readRun(parentRunId);
+
+    // Fetch child runs using client SDK with filter
+    const childRunsIterator = langClient.listRuns({
+      projectName: projectName,
+      filter: `eq(parent_run_id, "${parentRunId}")`,
+    });
+
+    // Convert async iterator to array
+    const childRuns = [];
+    for await (const run of childRunsIterator) {
+      childRuns.push(run);
+    }
+
+    // Calculate latency metrics
+    const latency = calculateLatency(parentRun, childRuns);
+
+    // Calculate token usage metrics
+    const tokens = calculateTokenUsage(childRuns);
+
+    // Calculate cost
+    const cost = calculateCost(tokens, input_cost_per_1k, output_cost_per_1k);
+
+    // Extract metadata
+    const providerId = parentRun.inputs?.providerId || parentRun.extra?.providerId || 'N/A';
+    const startTime = parentRun.start_time ? new Date(parentRun.start_time).toISOString() : 'N/A';
+    const endTime = parentRun.end_time ? new Date(parentRun.end_time).toISOString() : 'N/A';
+
+    // Log metrics to console
+    logMetricsToConsole(parentRunId, providerId, startTime, endTime, latency, tokens, cost);
+
+    return {
+      runId: parentRunId,
+      latency,
+      tokens,
+      cost,
+    };
+  } catch (error) {
+    console.error("[LangSmith Metrics] ✗ Error fetching metrics:", error.message);
+    return null;
+  }
+}
+
+/**
+ * Calculate latency metrics from parent and child runs
+ * @private
+ */
+function calculateLatency(parentRun, childRuns) {
+  const latency = {
+    workflow_ms: 0,
+    per_node: [],
+  };
+
+  // Calculate workflow latency
+  if (parentRun.start_time && parentRun.end_time) {
+    const startTime = new Date(parentRun.start_time).getTime();
+    const endTime = new Date(parentRun.end_time).getTime();
+    latency.workflow_ms = endTime - startTime;
+  }
+
+  // Calculate per-node latency
+  if (Array.isArray(childRuns)) {
+    for (const run of childRuns) {
+      if (run.start_time && run.end_time) {
+        const startTime = new Date(run.start_time).getTime();
+        const endTime = new Date(run.end_time).getTime();
+        const nodeLatency = endTime - startTime;
+
+        latency.per_node.push({
+          name: run.name || 'unknown',
+          run_type: run.run_type || 'unknown',
+          latency_ms: nodeLatency,
+        });
+      }
+    }
+  }
+
+  return latency;
+}
+
+/**
+ * Calculate token usage from LLM runs
+ * @private
+ */
+function calculateTokenUsage(childRuns) {
+  const tokens = {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  };
+
+  if (!Array.isArray(childRuns)) {
+    return tokens;
+  }
+
+  // Filter LLM runs and aggregate token usage
+  for (const run of childRuns) {
+    if (run.run_type === 'llm') {
+      const tokenUsage = run.outputs?.llm_output?.token_usage;
+      
+      if (tokenUsage) {
+        tokens.prompt_tokens += tokenUsage.prompt_tokens || 0;
+        tokens.completion_tokens += tokenUsage.completion_tokens || 0;
+        tokens.total_tokens += tokenUsage.total_tokens || 0;
+      }
+    }
+  }
+
+  return tokens;
+}
+
+/**
+ * Calculate estimated cost based on token usage
+ * @private
+ */
+function calculateCost(tokens, input_cost_per_1k, output_cost_per_1k) {
+  const promptCost = (tokens.prompt_tokens / 1000) * input_cost_per_1k;
+  const completionCost = (tokens.completion_tokens / 1000) * output_cost_per_1k;
+  const totalCost = promptCost + completionCost;
+
+  return {
+    estimated_cost_usd: parseFloat(totalCost.toFixed(6)),
+  };
+}
+
+/**
+ * Log metrics to console (simplified)
+ * @private
+ */
+function logMetricsToConsole(runId, providerId, startTime, endTime, latency, tokens, cost) {
+  console.log(`\n${'='.repeat(70)}`);
+  console.log(`Provider ID: ${providerId}`);
+  console.log(`Start Time: ${startTime}`);
+  console.log(`End Time: ${endTime}`);
+  console.log(`Latency: ${latency.workflow_ms}ms (${(latency.workflow_ms / 1000).toFixed(2)}s)`);
+  console.log(`Total Tokens: ${tokens.total_tokens}`);
+  console.log(`Estimated Cost: $${cost.estimated_cost_usd.toFixed(6)} USD`);
+  console.log(`${'='.repeat(70)}\n`);
 }
 
