@@ -268,10 +268,16 @@ document.addEventListener('click', async (ev) => {
     }
 
     const openIssues = issues.filter(i => i.status === 'OPEN').length;
+    const needsReviewCount = issues.filter(i => i.action === 'NEEDS_REVIEW').length;
     const hasOpen = openIssues > 0;
 
     // Build Bootstrap-styled HTML table
     let html = `
+      <div style="text-align: center; margin-bottom: 16px; padding: 12px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+        <p style="margin: 0; font-size: 1rem; color: #856404; font-weight: 600;">
+          <i class="bi bi-exclamation-circle"></i> ${needsReviewCount} issue${needsReviewCount !== 1 ? 's' : ''} need${needsReviewCount !== 1 ? '' : 's'} review
+        </p>
+      </div>
       <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
         <style>
           .issues-table { font-size: 1rem; }
@@ -315,7 +321,7 @@ document.addEventListener('click', async (ev) => {
       const statusBadgeClass = it.status === 'ACCEPTED' ? 'bg-success' : it.status === 'REJECTED' ? 'bg-secondary' : 'bg-warning text-dark';
       const sourceType = it.source_type || 'UNKNOWN';
       const action = it.action || 'NEEDS_REVIEW';
-      const actionBadgeClass = action === 'AUTO_ACCEPT' ? 'bg-success' : 'bg-warning text-dark';
+      const actionBadgeClass = action === 'AUTO_ACCEPT' ? 'bg-success' : action === 'NEEDS_REVIEW' ? 'bg-warning' : 'bg-warning text-dark';
       
       // Format suggested value - handle JSON arrays
       let suggestedDisplay = it.suggested_value || '';
@@ -347,7 +353,7 @@ document.addEventListener('click', async (ev) => {
           <td><span class="badge ${sourceBadgeClass}">${escapeHtml(it.source_type || 'UNKNOWN')}</span></td>
           <td><span class="badge bg-secondary">${confidence}%</span></td>
           <td><span class="badge bg-danger">${escapeHtml(it.severity)}</span></td>
-          <td><span class="badge ${actionBadgeClass}">${escapeHtml(action)}</span></td>
+          <td><span class="badge ${actionBadgeClass}" style="${action === 'NEEDS_REVIEW' ? 'background-color: #ffc107 !important; color: #333 !important;' : ''}">${escapeHtml(action)}</span></td>
           <td><span class="badge ${statusBadgeClass}">${escapeHtml(it.status)}</span></td>
           <td class="action-cell">
             ${isOpen ? `
@@ -481,7 +487,11 @@ document.addEventListener('click', async (ev) => {
             refreshBulkButtons();
             
             Swal.close();
-            Swal.fire('Success', 'All issues accepted successfully!', 'success');
+            Swal.fire('Success', 'All issues accepted successfully!', 'success').then(() => {
+              // Close modal and reload runs table to show download button
+              Swal.close();
+              loadRuns();
+            });
           } catch (err) {
             Swal.close();
             Swal.fire('Error', err.message || String(err), 'error');
@@ -516,7 +526,11 @@ document.addEventListener('click', async (ev) => {
             refreshBulkButtons();
             
             Swal.close();
-            Swal.fire('Success', 'All issues rejected successfully!', 'success');
+            Swal.fire('Success', 'All issues rejected successfully!', 'success').then(() => {
+              // Close modal and reload runs table to show download button
+              Swal.close();
+              loadRuns();
+            });
           } catch (err) {
             Swal.close();
             Swal.fire('Error', err.message || String(err), 'error');

@@ -29,13 +29,22 @@ async function updateRunProgressWithRetry(runId, payload, attempt = 1) {
 }
 
 router.get("/", async (req, res) => {
-  const { data, error } = await supabase
-    .from("validation_runs")
-    .select("*")
-    .order("started_at", { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from("validation_runs")
+      .select("*")
+      .order("started_at", { ascending: false });
 
-  if (error) return res.status(500).json({ error: "Failed to load runs" });
-  res.json({ runs: data });
+    if (error) {
+      console.error("[ValidationRuns] GET / failed:", error);
+      return res.status(500).json({ error: "Failed to load runs" });
+    }
+    
+    res.json({ runs: data || [] });
+  } catch (err) {
+    console.error("[ValidationRuns] GET / unexpected error:", err);
+    res.status(500).json({ error: "Failed to load runs", message: err.message });
+  }
 });
 
 router.post("/", async (req, res) => {
@@ -221,6 +230,17 @@ router.get('/:id/issues', async (req, res) => {
 router.get('/:id/export', async (req, res) => {
   const runId = req.params.id;
 
+  // Get the run to get total providers count
+  const { data: run, error: runErr } = await supabase
+    .from('validation_runs')
+    .select('*')
+    .eq('id', runId)
+    .single();
+
+  if (runErr || !run) {
+    return res.status(404).json({ error: 'Validation run not found' });
+  }
+
   // Ensure no open issues remain
   const { count: openCount, error: openErr } = await supabase
     .from('validation_issues')
@@ -233,7 +253,7 @@ router.get('/:id/export', async (req, res) => {
     return res.status(400).json({ error: 'Issues still open. Resolve all issues before exporting.' });
   }
 
-  // Get providers involved in this run (from issues)
+  // Get all providers involved in this run (from issues - any outcome)
   const { data: issueProviders, error: providerErr } = await supabase
     .from('validation_issues')
     .select('provider_id')
@@ -247,21 +267,30 @@ router.get('/:id/export', async (req, res) => {
     return res.status(400).json({ error: 'No providers associated with this run' });
   }
 
+  // Get provider details only for providers in this run
   const { data: providers, error: loadErr } = await supabase
     .from('providers')
     .select('*')
-    .in('id', providerIds);
+    .in('id', providerIds)
+    .order('name', { ascending: true });
 
   if (loadErr) return res.status(500).json({ error: 'Export failed' });
 
+  // Build CSV with run-specific data
   let csv = 'name,phone,email,address_line1,city,state,zip,speciality,license_number\n';
 
   providers.forEach(p => {
-    csv += `"${p.name || ''}","${p.phone || ''}","${p.email || ''}","${p.address_line1 || ''}","${p.city || ''}","${p.state || ''}","${p.zip || ''}","${p.speciality || ''}","${p.license_number || ''}"\n`;
+    // Escape quotes in CSV fields
+    const escape = (val) => {
+      if (!val) return '""';
+      return `"${String(val).replace(/"/g, '""')}"`;
+    };
+    csv += `${escape(p.name)},${escape(p.phone)},${escape(p.email)},${escape(p.address_line1)},${escape(p.city)},${escape(p.state)},${escape(p.zip)},${escape(p.speciality)},${escape(p.license_number)}\n`;
   });
 
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', `attachment; filename=validated_run_${runId}.csv`);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="validated_providers_run_${runId.substring(0, 8)}.csv"`);
+  res.setHeader('Content-Length', Buffer.byteLength(csv));
   res.send(csv);
 });
 

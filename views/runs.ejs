@@ -96,7 +96,7 @@
                       <td><span class="badge badge-success"><%= r.success_count ?? '—' %></span></td>
                       <td>
                         <% if (r.needs_review_count > 0) { %>
-                          <span class="badge badge-warning"><%= r.needs_review_count %></span>
+                          <span class="badge" style="background-color: #ffc107; color: #333; font-weight: 600;"><%= r.needs_review_count %></span>
                         <% } else { %>
                           <span class="badge">0</span>
                         <% } %>
