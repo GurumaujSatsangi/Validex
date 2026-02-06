@@ -18,6 +18,7 @@
 
 import { executeValidationWorkflow } from "./graph/workflow.js";
 import { supabase } from "../supabaseClient.js";
+import { sendRunCompletionEmail, sendAdminValidationSummaryEmail } from "./agents/emailGenerationAgent.js";
 
 /**
  * Run validation for a single provider using LangGraph
@@ -262,6 +263,16 @@ export async function runValidationForImportedProviders(providerIds) {
 
     console.info(`[ValidationService] Validation run complete: ${run.id} - Success: ${successCount} - Needs Review: ${needsReviewCount}`);
 
+    // Send completion email
+    console.info(`[ValidationService] Sending completion email for run ${run.id}...`);
+    try {
+      await sendRunCompletionEmail(run.id, providerIds);
+      console.info(`[ValidationService] Completion email sent successfully for run ${run.id}`);
+    } catch (emailErr) {
+      console.error(`[ValidationService] Failed to send completion email for run ${run.id}:`, emailErr.message);
+      // Don't fail the entire validation run if email fails
+    }
+
     return run.id;
   } catch (error) {
     console.error('[ValidationService] Fatal error in validation run:', error.message);
@@ -338,6 +349,16 @@ export async function runValidationForSingleProvider(providerId) {
   }
 
   console.info(`[ValidationService] Single provider validation complete - Needs Review: ${result.needsReview}`);
+
+  // Send admin summary email for single provider validation
+  console.info(`[ValidationService] Sending admin summary email for provider ${providerId}, run ${run.id}...`);
+  try {
+    await sendAdminValidationSummaryEmail(run.id, providerId);
+    console.info(`[ValidationService] Admin summary email sent successfully for provider ${providerId}`);
+  } catch (emailErr) {
+    console.error(`[ValidationService] Failed to send admin summary email:`, emailErr.message);
+    // Don't fail the validation if email fails
+  }
 
   return run.id;
 }

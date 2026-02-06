@@ -49,6 +49,112 @@ router.get("/:id/issues", async (req, res) => {
   res.json({ issues: data });
 });
 
+// POST /api/providers/:id/issues/accept-all - Accept all open issues for a provider
+router.post("/:id/issues/accept-all", async (req, res) => {
+  const providerId = req.params.id;
+  
+  // Map field names from validation_issues to actual database column names
+  const fieldNameToDbColumn = {
+    name: 'name',
+    phone: 'phone',
+    email: 'email',
+    address: 'address_line1',
+    address_line1: 'address_line1',
+    city: 'city',
+    state: 'state',
+    zip: 'zip',
+    speciality: 'speciality',
+    specialty: 'speciality',
+    license_status: 'license_status',
+    license: 'license_number',
+    license_number: 'license_number',
+    certification: 'primary_certification',
+    npi: 'npi_id',
+    npi_id: 'npi_id',
+    website: 'website',
+    provider_code: 'provider_code',
+    taxonomy_code: 'taxonomy_code',
+  };
+
+  try {
+    console.log(`\n[Accept All Provider Issues] Starting for provider: ${providerId}`);
+
+    // Get all open issues for this provider
+    const { data: issues, error } = await supabase
+      .from("validation_issues")
+      .select("*")
+      .eq("provider_id", providerId)
+      .eq("status", "OPEN");
+
+    if (error) {
+      console.error("[Accept All Provider Issues] Failed to load issues:", error);
+      return res.status(500).json({ error: "Failed to load issues" });
+    }
+
+    console.log(`[Accept All Provider Issues] Found ${issues.length} open issues`);
+
+    if (issues.length === 0) {
+      return res.json({ message: "No open issues to accept", count: 0 });
+    }
+
+    // Build cumulative update object for provider
+    const providerUpdate = {
+      status: "ACTIVE",
+      last_updated: new Date().toISOString()
+    };
+
+    let updatedFields = [];
+
+    for (const issue of issues) {
+      const dbColumn = fieldNameToDbColumn[issue.field_name] || issue.field_name;
+      
+      if (issue.suggested_value !== null && issue.suggested_value !== undefined) {
+        providerUpdate[dbColumn] = issue.suggested_value;
+        updatedFields.push(`${issue.field_name} → ${dbColumn}`);
+        console.log(`[Accept All Provider Issues] Will update ${dbColumn} = "${issue.suggested_value}"`);
+      }
+    }
+
+    // Update provider with all changes at once
+    const { data: updateData, error: updateErr } = await supabase
+      .from("providers")
+      .update(providerUpdate)
+      .eq("id", providerId)
+      .select();
+
+    if (updateErr) {
+      console.error("[Accept All Provider Issues] Provider update failed:", updateErr);
+      return res.status(500).json({ error: `Failed to update provider: ${updateErr.message}` });
+    }
+
+    console.log(`[Accept All Provider Issues] Provider updated successfully, fields: ${updatedFields.join(', ')}`);
+
+    // Mark all issues as ACCEPTED
+    const { error: issuesUpdateErr } = await supabase
+      .from("validation_issues")
+      .update({ status: "ACCEPTED" })
+      .eq("provider_id", providerId)
+      .eq("status", "OPEN");
+
+    if (issuesUpdateErr) {
+      console.error("[Accept All Provider Issues] Failed to update issues status:", issuesUpdateErr);
+      // Continue anyway since provider data was updated
+    }
+
+    console.log(`[Accept All Provider Issues] Completed for provider ${providerId}\n`);
+
+    res.json({ 
+      message: "All issues accepted and provider updated", 
+      count: issues.length,
+      updatedFields: updatedFields,
+      provider: updateData && updateData.length > 0 ? updateData[0] : null
+    });
+  } catch (err) {
+    console.error("[Accept All Provider Issues] Unexpected error:", err);
+    res.status(500).json({ error: `Internal server error: ${err.message}` });
+  }
+});
+
 // DELETE /api/providers/delete-all - delete all providers and related data
 router.delete('/delete-all', async (req, res) => {
   try {

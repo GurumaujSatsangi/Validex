@@ -91,6 +91,14 @@ async function load() {
         </div>
       `;
 
+      // Show/hide Accept All button
+      const acceptAllBtn = document.getElementById('acceptAllIssuesBtn');
+      if (pending > 0) {
+        acceptAllBtn.style.display = 'inline-flex';
+      } else {
+        acceptAllBtn.style.display = 'none';
+      }
+
       // Create issues table
       issuesList.innerHTML = `
         <table class="issues-table">
@@ -110,7 +118,7 @@ async function load() {
               const statusBadgeClass = it.status === 'ACCEPTED' ? 'badge-success' : it.status === 'REJECTED' ? 'badge' : 'badge-warning';
               const severityBadgeClass = it.severity === 'HIGH' ? 'badge-danger' : it.severity === 'MEDIUM' ? 'badge-warning' : 'badge-info';
               const confidencePct = it.confidence ? Math.round(it.confidence * 100) : 0;
-              const source = it.source || '-';
+              const source = it.source_type || it.source || '-';
 
               return `
                 <tr>
@@ -135,5 +143,37 @@ async function load() {
     alert('Error loading provider data');
   }
 }
+
+// Accept All Issues button handler
+document.getElementById('acceptAllIssuesBtn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('acceptAllIssuesBtn');
+  const originalHtml = btn.innerHTML;
+  
+  try {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Processing...';
+    
+    const res = await fetch(`/api/providers/${providerId}/issues/accept-all`, { method: 'POST' });
+    const json = await res.json();
+    
+    if (!res.ok) {
+      alert('Error: ' + (json?.error || 'Failed to accept all issues'));
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+      return;
+    }
+    
+    // Show success message
+    alert(`✓ Successfully accepted ${json.count} issue(s) and updated provider data!`);
+    
+    // Reload the page to show updated data
+    window.location.reload();
+  } catch (err) {
+    console.error('Error accepting all issues:', err);
+    alert('Error accepting issues: ' + err.message);
+    btn.innerHTML = originalHtml;
+    btn.disabled = false;
+  }
+});
 
 load();
