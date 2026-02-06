@@ -109,7 +109,17 @@
                         <% } %>
                       </td>
                       <td>
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                          <% if (r.completed_at) { %>
+                            <% const startTime = new Date(r.started_at).getTime(); %>
+                            <% const endTime = new Date(r.completed_at).getTime(); %>
+                            <% const totalSeconds = Math.round((endTime - startTime) / 1000); %>
+                            <% const mins = Math.floor(totalSeconds / 60); %>
+                            <% const secs = totalSeconds % 60; %>
+                            <span style="background: #f0f0f0; padding: 4px 12px; border-radius: 6px; font-size: 0.875rem; font-weight: 600;">
+                              Time Taken: <%= mins > 0 ? mins + 'm ' + secs + 's' : secs + 's' %>
+                            </span>
+                          <% } %>
                           <% if (r.needs_review_count > 0) { %>
                             <button class="btn btn-secondary btn-sm view-issues-btn" data-run-id="<%= r.id %>">
                               <i class="bi bi-eye"></i> Issues
