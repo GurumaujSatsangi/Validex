@@ -366,6 +366,39 @@ body, html {
   color: var(--accent-red);
 }
 
+/* Card-specific colors */
+.metrics-grid > .metric-card:nth-child(1) .metric-label {
+  color: var(--accent-blue);
+}
+
+.metrics-grid > .metric-card:nth-child(1) .metric-value {
+  color: var(--accent-blue);
+}
+
+.metric-card.success .metric-label {
+  color: var(--accent-green);
+}
+
+.metric-card.success .metric-value {
+  color: var(--accent-green);
+}
+
+.metric-card.warning .metric-label {
+  color: var(--accent-orange);
+}
+
+.metric-card.warning .metric-value {
+  color: var(--accent-orange);
+}
+
+.metrics-grid > .metric-card:nth-child(4) .metric-label {
+  color: var(--ey-black);
+}
+
+.metrics-grid > .metric-card:nth-child(4) .metric-value {
+  color: var(--ey-black);
+}
+
 /* ==============================================
    BUTTONS
    ============================================== */

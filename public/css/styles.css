@@ -405,6 +405,55 @@ a {
   font-size: 1rem;
 }
 
+/* Card-specific colors */
+.metrics-grid > .metric-card:nth-child(1)::before {
+  background: #2979ff;
+}
+
+.metrics-grid > .metric-card:nth-child(1) .metric-label {
+  color: #2979ff;
+}
+
+.metrics-grid > .metric-card:nth-child(1) .metric-value {
+  color: #2979ff;
+}
+
+.metrics-grid > .metric-card:nth-child(2)::before {
+  background: #16a34a;
+}
+
+.metrics-grid > .metric-card:nth-child(2) .metric-label {
+  color: #16a34a;
+}
+
+.metrics-grid > .metric-card:nth-child(2) .metric-value {
+  color: #16a34a;
+}
+
+.metrics-grid > .metric-card:nth-child(3)::before {
+  background: #f59e0b;
+}
+
+.metrics-grid > .metric-card:nth-child(3) .metric-label {
+  color: #f59e0b;
+}
+
+.metrics-grid > .metric-card:nth-child(3) .metric-value {
+  color: #f59e0b;
+}
+
+.metrics-grid > .metric-card:nth-child(4)::before {
+  background: #000000;
+}
+
+.metrics-grid > .metric-card:nth-child(4) .metric-label {
+  color: #000000;
+}
+
+.metrics-grid > .metric-card:nth-child(4) .metric-value {
+  color: #000000;
+}
+
 /* ==============================================
    TABLES
    ============================================== */
