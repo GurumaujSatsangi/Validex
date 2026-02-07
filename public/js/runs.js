@@ -1,20 +1,35 @@
 async function loadRuns(){
   try {
     const res = await fetch('/api/validation-runs');
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
     const json = await res.json();
     const table = document.getElementById('runsTbl');
     const spinner = document.querySelector('#runsList .spinner-border');
     
+    // Check if required DOM elements exist (defensive check)
+    if (!table) {
+      console.warn('Runs table not found on page, skipping update');
+      return;
+    }
+    
     if (!json.runs || json.runs.length === 0) {
-      spinner.style.display = 'none';
+      if (spinner) spinner.style.display = 'none';
       table.style.display = 'table';
-      table.querySelector('tbody').innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No validation runs yet. Start one to begin!</td></tr>';
+      const tbody = table.querySelector('tbody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No validation runs yet. Start one to begin!</td></tr>';
       return;
     }
 
-    spinner.style.display = 'none';
+    if (spinner) spinner.style.display = 'none';
     table.style.display = 'table';
     const tbody = table.querySelector('tbody');
+    
+    if (!tbody) {
+      console.warn('Runs table body not found, skipping update');
+      return;
+    }
     
     const rows = json.runs.map(r => `
       <tr>
@@ -488,9 +503,13 @@ document.addEventListener('click', async (ev) => {
             
             Swal.close();
             Swal.fire('Success', 'All issues accepted successfully!', 'success').then(() => {
-              // Close modal and reload runs table to show download button
-              Swal.close();
-              loadRuns();
+              // Close the issues modal
+              const issuesModal = bootstrap.Modal.getInstance(document.getElementById('issuesModal'));
+              if (issuesModal) {
+                issuesModal.hide();
+              }
+              // Reload the page to refresh the runs table
+              window.location.reload();
             });
           } catch (err) {
             Swal.close();
@@ -527,9 +546,13 @@ document.addEventListener('click', async (ev) => {
             
             Swal.close();
             Swal.fire('Success', 'All issues rejected successfully!', 'success').then(() => {
-              // Close modal and reload runs table to show download button
-              Swal.close();
-              loadRuns();
+              // Close the issues modal
+              const issuesModal = bootstrap.Modal.getInstance(document.getElementById('issuesModal'));
+              if (issuesModal) {
+                issuesModal.hide();
+              }
+              // Reload the page to refresh the runs table
+              window.location.reload();
             });
           } catch (err) {
             Swal.close();

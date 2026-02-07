@@ -620,19 +620,21 @@ export async function runQualityAssurance(provider, runId) {
     }
   }
 
-  // Prepare issue rows for bulk insert
-  const issueRows = Object.entries(suggested).map(([fieldName, s]) => ({
-    provider_id: provider.id,
-    run_id: runId,
-    field_name: fieldName,
-    old_value: s.oldValue,
-    suggested_value: s.suggestedValue,
-    confidence: s.confidence,
-    severity: s.severity,
-    action: s.action,
-    source_type: s.sourceType || "UNKNOWN",
-    status: s.action === 'AUTO_ACCEPT' ? 'ACCEPTED' : 'OPEN'
-  }));
+  // Prepare issue rows for bulk insert - skip issues with null/undefined suggested values
+  const issueRows = Object.entries(suggested)
+    .filter(([fieldName, s]) => s.suggestedValue !== null && s.suggestedValue !== undefined)
+    .map(([fieldName, s]) => ({
+      provider_id: provider.id,
+      run_id: runId,
+      field_name: fieldName,
+      old_value: s.oldValue,
+      suggested_value: s.suggestedValue,
+      confidence: s.confidence,
+      severity: s.severity,
+      action: s.action,
+      source_type: s.sourceType || "UNKNOWN",
+      status: s.action === 'AUTO_ACCEPT' ? 'ACCEPTED' : 'OPEN'
+    }));
 
   if (issueRows.length === 0) return { needsReview: false };
 
