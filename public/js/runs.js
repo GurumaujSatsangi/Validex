@@ -289,8 +289,22 @@ document.addEventListener('click', async (ev) => {
     let html = `
       <div style="text-align: center; margin-bottom: 16px; padding: 12px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
         <p style="margin: 0; font-size: 1rem; color: #856404; font-weight: 600;">
-          <i class="bi bi-exclamation-circle"></i> ${needsReviewCount} issue${needsReviewCount !== 1 ? 's' : ''} need${needsReviewCount !== 1 ? '' : 's'} review
+          <i class="bi bi-exclamation-circle"></i> <span id="needsReviewCounter">${needsReviewCount}</span> issue${needsReviewCount !== 1 ? 's' : ''} need${needsReviewCount !== 1 ? '' : 's'} review
         </p>
+      </div>
+      <div class="mb-3">
+        <div class="row g-2">
+          <div class="col-md-6">
+            <input type="text" id="issueSearchInput" class="form-control form-control-sm" placeholder="Search by provider name or NPI...">
+          </div>
+          <div class="col-md-6">
+            <select id="issueFilterSelect" class="form-select form-select-sm">
+              <option value="all">All Issues</option>
+              <option value="open">Open Issues Only</option>
+              <option value="closed">Closed Issues Only</option>
+            </select>
+          </div>
+        </div>
       </div>
       <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
         <style>
@@ -364,7 +378,7 @@ document.addEventListener('click', async (ev) => {
       else if (sourceType === 'PDF_OCR') sourceBadgeClass = 'bg-danger';
       
       html += `
-        <tr data-issue-id="${escapeHtml(it.id)}">
+        <tr data-issue-id="${escapeHtml(it.id)}" data-provider-name="${providerName.toLowerCase()}" data-npi-id="${npiId}" data-status="${it.status}">
           <td><a href="/provider/${it.provider_id}" target="_blank" class="text-decoration-none">${providerName}</a></td>
           <td><strong>${escapeHtml(it.field_name)}</strong></td>
           <td>${escapeHtml(it.old_value)}</td>
@@ -412,10 +426,16 @@ document.addEventListener('click', async (ev) => {
           const acceptAllBtn = document.getElementById('acceptAllIssues');
           const rejectAllBtn = document.getElementById('rejectAllIssues');
           const hint = document.getElementById('issuesHint');
+          const counter = document.getElementById('needsReviewCounter');
 
           if (acceptAllBtn) acceptAllBtn.disabled = !hasOpen;
           if (rejectAllBtn) rejectAllBtn.disabled = !hasOpen;
           if (hint) hint.textContent = hasOpen ? 'Resolve all issues to enable download.' : 'All issues closed.';
+          
+          // Update counter
+          const openCount = Array.from(document.querySelectorAll('#issuesModalTable tbody tr'))
+            .filter(r => r.style.display !== 'none' && r.querySelector('td:nth-child(9) .badge')?.textContent === 'OPEN').length;
+          if (counter) counter.textContent = openCount;
         };
 
         const markRowClosed = (row, statusText) => {
@@ -571,6 +591,45 @@ document.addEventListener('click', async (ev) => {
             if (btn) btn.disabled = false;
           }
         });
+
+        // Search and filter functionality
+        const searchInput = document.getElementById('issueSearchInput');
+        const filterSelect = document.getElementById('issueFilterSelect');
+        
+        const applyFilters = () => {
+          const searchTerm = searchInput?.value.toLowerCase() || '';
+          const filterValue = filterSelect?.value || 'all';
+          
+          const rows = document.querySelectorAll('#issuesModalTable tbody tr');
+          rows.forEach(row => {
+            const providerName = row.dataset.providerName || '';
+            const npiId = row.dataset.npiId || '';
+            const status = row.dataset.status || '';
+            
+            // Check search match
+            const searchMatch = !searchTerm || 
+              providerName.includes(searchTerm) || 
+              npiId.includes(searchTerm);
+            
+            // Check filter match
+            const filterMatch = filterValue === 'all' ||
+              (filterValue === 'open' && status === 'OPEN') ||
+              (filterValue === 'closed' && status !== 'OPEN');
+            
+            // Show/hide row
+            row.style.display = (searchMatch && filterMatch) ? '' : 'none';
+          });
+          
+          refreshBulkButtons();
+        };
+        
+        if (searchInput) {
+          searchInput.addEventListener('input', applyFilters);
+        }
+        
+        if (filterSelect) {
+          filterSelect.addEventListener('change', applyFilters);
+        }
 
         // Initial state
         refreshBulkButtons();

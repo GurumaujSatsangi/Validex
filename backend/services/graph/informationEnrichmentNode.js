@@ -174,6 +174,50 @@ export async function informationEnrichmentNode(state) {
     errorLog.push({ stage: "information_enrichment", source: "AZURE_MAPS", error: azureAddressResult.reason, timestamp: new Date().toISOString() });
   }
 
+  // Website scraping (provider website) - depends on Azure POI if no website provided
+  try {
+    let websiteCandidate = input.website || null;
+    
+    // If website not provided, try Azure POI to find business website
+    if (!websiteCandidate) {
+      const poi = await searchBusinessWithAzure({
+        id: state.providerId,
+        name: input.name,
+        city: input.city,
+        state: input.state,
+      });
+      if (poi && poi.isFound) {
+        externalResults.azure = { success: true, data: poi, error: null };
+        validationSources.push({ source: "AZURE_POI", success: true, timestamp: new Date().toISOString() });
+        websiteCandidate = poi.website || null;
+        // If Azure gives a normalized address, keep it for QA
+        if (poi.formattedAddress) {
+          externalResults.azure.data.address = poi.formattedAddress;
+        }
+      } else {
+        validationSources.push({ source: "AZURE_POI", success: false, error: poi?.reason || "NO_RESULTS" });
+      }
+    }
+
+    if (websiteCandidate) {
+      const scrapedData = await scrapeProviderInfo({ name: input.name, website: websiteCandidate });
+      if (scrapedData && scrapedData.isFound) {
+        externalResults.website = { success: true, data: scrapedData, error: null };
+        validationSources.push({ source: "WEBSITE", success: true, timestamp: new Date().toISOString() });
+      } else {
+        externalResults.website = { success: false, data: scrapedData || null, error: "WEBSITE_NOT_FOUND" };
+        validationSources.push({ source: "WEBSITE", success: false, error: "WEBSITE_NOT_FOUND" });
+      }
+    } else {
+      externalResults.website = { success: false, data: null, error: "WEBSITE_NOT_PROVIDED" };
+      validationSources.push({ source: "WEBSITE", success: false, error: "WEBSITE_NOT_PROVIDED" });
+    }
+  } catch (error) {
+    externalResults.website = { success: false, data: null, error: error.message };
+    validationSources.push({ source: "WEBSITE", success: false, error: error.message });
+    errorLog.push({ stage: "information_enrichment", source: "WEBSITE", error: error.message, timestamp: new Date().toISOString() });
+  }
+
   // NPI Certifications enrichment
   try {
     if (normalizedData.npi) {

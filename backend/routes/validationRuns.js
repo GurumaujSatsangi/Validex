@@ -99,12 +99,27 @@ router.post("/", async (req, res) => {
       console.log(`[ValidationRuns] Updated run progress: ${processed}/${total}, Success: ${successCount}, NeedsReview: ${needsReviewCount}`);
     }
 
-    console.log(`[ValidationRuns] All validation complete. Setting completed_at for run ${runId}`);
+    console.log(`[ValidationRuns] All validation complete. Recalculating actual issue counts for run ${runId}`);
     
+    // Recalculate needs_review_count based on actual OPEN issues
+    const { count: openIssuesCount, error: countErr } = await supabase
+      .from('validation_issues')
+      .select('id', { count: 'exact', head: true })
+      .eq('run_id', runId)
+      .eq('status', 'OPEN');
+
+    const actualOpenCount = countErr ? needsReviewCount : (openIssuesCount ?? 0);
+    const actualSuccessCount = Math.max(0, total - actualOpenCount);
+
+    console.log(`[ValidationRuns] Actual issue counts: Open=${actualOpenCount}, Success=${actualSuccessCount}`);
+
     const completedAt = new Date().toISOString();
     const completionPayload = {
       completed_at: completedAt,
       status: 'COMPLETED',
+      processed: total,
+      success_count: actualSuccessCount,
+      needs_review_count: actualOpenCount,
     };
     const completeRes = await supabase
       .from("validation_runs")
