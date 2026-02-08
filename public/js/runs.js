@@ -292,18 +292,17 @@ document.addEventListener('click', async (ev) => {
           <i class="bi bi-exclamation-circle"></i> <span id="needsReviewCounter">${needsReviewCount}</span> issue${needsReviewCount !== 1 ? 's' : ''} need${needsReviewCount !== 1 ? '' : 's'} review
         </p>
       </div>
-      <div class="mb-3">
-        <div class="row g-2">
-          <div class="col-md-6">
-            <input type="text" id="issueSearchInput" class="form-control form-control-sm" placeholder="Search by provider name or NPI...">
-          </div>
-          <div class="col-md-6">
-            <select id="issueFilterSelect" class="form-select form-select-sm">
-              <option value="all">All Issues</option>
-              <option value="open">Open Issues Only</option>
-              <option value="closed">Closed Issues Only</option>
-            </select>
-          </div>
+      <div class="issues-toolbar">
+        <div class="issues-search">
+          <input type="text" id="issueSearchInput" class="issues-search-input" placeholder="Search by name, NPI ID, or specialty...">
+          <button id="issueSearchBtn" class="issues-search-btn"><i class="bi bi-search"></i> Search</button>
+          <button id="issueClearBtn" class="issues-clear-btn"><i class="bi bi-x"></i> Clear</button>
+        </div>
+        <div class="issues-filters">
+          <span class="issues-filter-label">Filter by:</span>
+          <button class="issues-filter-btn active" data-filter="all"><i class="bi bi-funnel"></i> All</button>
+          <button class="issues-filter-btn" data-filter="open"><i class="bi bi-exclamation-circle"></i> Has Issues</button>
+          <button class="issues-filter-btn" data-filter="closed"><i class="bi bi-check-circle"></i> No Issues</button>
         </div>
       </div>
       <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
@@ -314,6 +313,18 @@ document.addEventListener('click', async (ev) => {
           .issues-table .badge { font-size: 0.7rem; padding: 3px 6px; }
           .issues-table .btn-sm { padding: 3px 6px; font-size: 0.7rem; }
           .issues-table a { font-size: 0.8rem; }
+          .issues-toolbar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+          .issues-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+          .issues-search-input { flex: 1; min-width: 260px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 0.95rem; }
+          .issues-search-btn { background: #000; color: #fff; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 600; }
+          .issues-clear-btn { background: #fff; color: #111827; border: 1px solid #d1d5db; border-radius: 10px; padding: 10px 16px; font-weight: 600; }
+          .issues-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+          .issues-filter-label { font-size: 0.9rem; color: #6b7280; margin-right: 4px; }
+          .issues-filter-btn { background: #f9fafb; color: #111827; border: 1px solid #d1d5db; border-radius: 999px; padding: 8px 14px; font-weight: 600; font-size: 0.85rem; }
+          .issues-filter-btn.active { background: #111827; color: #fff; border-color: #111827; }
+          @media (min-width: 768px) {
+            .issues-search { flex-wrap: nowrap; }
+          }
         </style>
         <div class="d-flex align-items-center gap-2 mb-2">
           <button id="acceptAllIssues" class="btn btn-success btn-sm" ${hasOpen ? '' : 'disabled'}>
@@ -594,45 +605,57 @@ document.addEventListener('click', async (ev) => {
 
         // Search and filter functionality
         const searchInput = document.getElementById('issueSearchInput');
-        const filterSelect = document.getElementById('issueFilterSelect');
+        const searchBtn = document.getElementById('issueSearchBtn');
+        const clearBtn = document.getElementById('issueClearBtn');
+        const filterButtons = Array.from(document.querySelectorAll('.issues-filter-btn'));
+        let activeFilter = 'all';
+
+        const setActiveFilter = (value) => {
+          activeFilter = value;
+          filterButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.filter === value));
+        };
         
         const applyFilters = () => {
           const searchTerm = searchInput?.value.toLowerCase() || '';
-          const filterValue = filterSelect?.value || 'all';
-          
           const rows = document.querySelectorAll('#issuesModalTable tbody tr');
           rows.forEach(row => {
             const providerName = row.dataset.providerName || '';
             const npiId = row.dataset.npiId || '';
             const status = row.dataset.status || '';
             
-            // Check search match
             const searchMatch = !searchTerm || 
               providerName.includes(searchTerm) || 
               npiId.includes(searchTerm);
             
-            // Check filter match
-            const filterMatch = filterValue === 'all' ||
-              (filterValue === 'open' && status === 'OPEN') ||
-              (filterValue === 'closed' && status !== 'OPEN');
+            const filterMatch = activeFilter === 'all' ||
+              (activeFilter === 'open' && status === 'OPEN') ||
+              (activeFilter === 'closed' && status !== 'OPEN');
             
-            // Show/hide row
             row.style.display = (searchMatch && filterMatch) ? '' : 'none';
           });
           
           refreshBulkButtons();
         };
-        
-        if (searchInput) {
-          searchInput.addEventListener('input', applyFilters);
-        }
-        
-        if (filterSelect) {
-          filterSelect.addEventListener('change', applyFilters);
-        }
+
+        filterButtons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            setActiveFilter(btn.dataset.filter || 'all');
+            applyFilters();
+          });
+        });
+
+        searchBtn?.addEventListener('click', applyFilters);
+        searchInput?.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') applyFilters();
+        });
+        clearBtn?.addEventListener('click', () => {
+          if (searchInput) searchInput.value = '';
+          setActiveFilter('all');
+          applyFilters();
+        });
 
         // Initial state
-        refreshBulkButtons();
+        applyFilters();
       }
     });
   } catch (err) {
