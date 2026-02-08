@@ -53,6 +53,7 @@ export async function informationEnrichmentNode(state) {
     const trueLensData = await scrapeTrueLensWebsite(input.name);
 
     if (trueLensData && trueLensData.isFound) {
+      externalResults.truelens = { success: true, data: trueLensData.data || null, error: null };
       const licenseStatus = trueLensData.data?.license_status || trueLensData.data?.licenseStatus || null;
       const licenseNumber = trueLensData.data?.license_number || trueLensData.data?.licenseNumber || null;
       externalResults.license = {
@@ -66,10 +67,12 @@ export async function informationEnrichmentNode(state) {
       };
       validationSources.push({ source: "LICENSE_REGISTRY", success: !!licenseStatus, timestamp: new Date().toISOString() });
     } else {
+      externalResults.truelens = { success: false, data: null, error: "TRUELENS_NOT_FOUND" };
       externalResults.license = { success: false, data: null, error: "LICENSE_NOT_FOUND" };
       validationSources.push({ source: "LICENSE_REGISTRY", success: false, error: "LICENSE_NOT_FOUND" });
     }
   } catch (error) {
+    externalResults.truelens = { success: false, data: null, error: error.message };
     externalResults.license = { success: false, data: null, error: error.message };
     validationSources.push({ source: "LICENSE_REGISTRY", success: false, error: error.message });
     errorLog.push({ stage: "information_enrichment", source: "LICENSE_REGISTRY", error: error.message, timestamp: new Date().toISOString() });

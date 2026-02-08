@@ -18,6 +18,47 @@ export async function directoryManagementNode(state) {
   console.log("[DirectoryManagement] Needs Review:", state.needsHumanReview);
   console.log("[DirectoryManagement] Confidence:", state.confidence?.finalScore);
 
+  // CRITICAL: Check if user has manually accepted any issues
+  const { data: acceptedIssues, error: issuesErr } = await supabase
+    .from("validation_issues")
+    .select("id, field_name, status")
+    .eq("provider_id", state.providerId)
+    .eq("status", "ACCEPTED");
+
+  if (issuesErr) {
+    console.error("[DirectoryManagement] Error checking accepted issues:", issuesErr);
+  }
+
+  const hasManuallyAcceptedIssues = acceptedIssues && acceptedIssues.length > 0;
+
+  if (hasManuallyAcceptedIssues) {
+    console.log(`[DirectoryManagement] Provider ${state.providerId} has ${acceptedIssues.length} manually accepted issue(s) - preserving ACTIVE status`);
+    
+    // User has manually reviewed and accepted changes - set to ACTIVE
+    await supabase
+      .from("providers")
+      .update({ 
+        status: "ACTIVE",
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", state.providerId);
+
+    return {
+      ...state,
+      directoryStatus: "ACTIVE",
+      alerts: [{
+        type: "MANUAL_REVIEW_COMPLETED",
+        severity: "LOW",
+        message: `Provider has ${acceptedIssues.length} manually accepted issue(s) - status set to ACTIVE`,
+        timestamp: new Date().toISOString(),
+      }],
+      decision: {
+        ...(state.decision || {}),
+        finalDecision: "MANUAL_ACCEPT",
+      },
+    };
+  }
+
   let directoryStatus = "PUBLISHED";
   const alerts = [];
 

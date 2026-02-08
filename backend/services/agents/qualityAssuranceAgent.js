@@ -61,6 +61,15 @@ export async function runQualityAssurance(provider, runId) {
 
   if (!sources || sources.length === 0) return { needsReview: false };
 
+  // ✅ CHECK IF ADDRESS IS AZURE-VERIFIED (AUTHORITATIVE)
+  // If Azure Maps validated the address with high confidence, skip all address-related validations
+  const isAddressVerifiedByAzure = provider.address_verified === true && 
+                                     provider.address_source === "AZURE_MAPS";
+
+  if (isAddressVerifiedByAzure) {
+    console.info(`[QA] Skipping address validation for provider ${provider.id} - address verified by Azure Maps`);
+  }
+
   const suggested = {};
 
   // Helper: Extract boolean match for each source
@@ -117,7 +126,7 @@ export async function runQualityAssurance(provider, runId) {
 
   // Check Azure Maps address validation
   const azureSource = sources.find(s => s.source_type === "AZURE_MAPS");
-  if (azureSource && azureSource.raw_data) {
+  if (azureSource && azureSource.raw_data && !isAddressVerifiedByAzure) {
     sourceMatches.azure = true;
     const azureData = azureSource.raw_data;
 
@@ -237,8 +246,8 @@ export async function runQualityAssurance(provider, runId) {
       };
     }
 
-    // Address comparisons - only if addresses are NOT essentially the same
-    if (!addressesMatch(provider.address_line1, poi.formattedAddress || '', 0.99)) {
+    // Address comparisons - only if addresses are NOT essentially the same AND not Azure-verified
+    if (!isAddressVerifiedByAzure && !addressesMatch(provider.address_line1, poi.formattedAddress || '', 0.99)) {
       if (poi.postalCode && provider.zip && poi.postalCode !== provider.zip) {
         const srcScore = sourceWeightedVote({ npi: false, azure: true, scrape: false, pdf: false });
         const addrScore = addressSimilarity(provider.address_line1, poi.formattedAddress || '');
@@ -386,8 +395,8 @@ export async function runQualityAssurance(provider, runId) {
 
     // Compare extracted address (if present)
     if (pdfData.address && pdfData.address !== provider.address_line1) {
-      // Only flag as issue if addresses are NOT essentially the same
-      if (!addressesMatch(provider.address_line1, pdfData.address, 0.99)) {
+      // Only flag as issue if addresses are NOT essentially the same AND not Azure-verified
+      if (!isAddressVerifiedByAzure && !addressesMatch(provider.address_line1, pdfData.address, 0.99)) {
         const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: false, pdf: true });
         const addrScore = addressSimilarity(provider.address_line1, pdfData.address);
         const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
@@ -411,6 +420,27 @@ export async function runQualityAssurance(provider, runId) {
   if (trueLensSource && trueLensSource.raw_data && trueLensSource.raw_data.isFound) {
     const webData = trueLensSource.raw_data.data;
     
+    console.info(`[QA] Processing TrueLens Website data for provider ${provider.id} (${provider.name})`);
+    
+    if (webData.appointment_timings && webData.appointment_timings.length > 0) {
+      console.info(`[QA] Found ${webData.appointment_timings.length} appointment timing entries from TrueLens`);
+      webData.appointment_timings.forEach(timing => {
+        console.info(`[QA]   - ${timing.day}: ${timing.time_slots.join(', ') || timing.status}`);
+      });
+    }
+    
+    if (webData.availability_status && webData.availability_status !== 'NO_INFO') {
+      console.info(`[QA] TrueLens availability status: ${webData.availability_status}`);
+    }
+    
+    if (webData.accepting_new_patients !== undefined) {
+      console.info(`[QA] TrueLens - Accepting new patients: ${webData.accepting_new_patients ? 'Yes' : 'No'}`);
+    }
+    
+    if (webData.telehealth_available !== undefined) {
+      console.info(`[QA] TrueLens - Telehealth available: ${webData.telehealth_available ? 'Yes' : 'No'}`);
+    }
+    
     // Phone Number
     if (webData.phone && !suggested.phone && normalizePhone(webData.phone) !== normalizePhone(provider.phone)) {
       const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
@@ -428,8 +458,8 @@ export async function runQualityAssurance(provider, runId) {
     
     // Address
     if (webData.address && !suggested.address_line1) {
-      // Only flag as issue if addresses are NOT essentially the same
-      if (!addressesMatch(provider.address_line1, webData.address, 0.99)) {
+      // Only flag as issue if addresses are NOT essentially the same AND not Azure-verified
+      if (!isAddressVerifiedByAzure && !addressesMatch(provider.address_line1, webData.address, 0.99)) {
         const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
         const addrScore = addressSimilarity(provider.address_line1, webData.address);
         const confidence = finalScore({ sourceScore: srcScore, addressScore: addrScore, phoneScore: 0 });
@@ -517,6 +547,41 @@ export async function runQualityAssurance(provider, runId) {
         sourceType: "TRUELENS_WEBSITE",
         action: determineAction(confidence),
         severity: determineSeverity(confidence)
+      };
+    }
+    
+    // Appointment Timings - detailed day/time slot information from TrueLens
+    if (webData.appointment_timings && webData.appointment_timings.length > 0) {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.75, phoneScore: 0 });
+      
+      // Format appointment timings for display
+      const formattedTimings = webData.appointment_timings
+        .map(t => `${t.day}: ${t.time_slots.length > 0 ? t.time_slots.join(', ') : t.status || 'Closed'}`)
+        .join('; ');
+      
+      suggested.appointment_availability = {
+        oldValue: 'Not available',
+        suggestedValue: formattedTimings,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: 'INFORMATIONAL', // This is informational, not a requirement to change
+        severity: 'INFO'
+      };
+    }
+    
+    // Availability Status - macro-level availability information
+    if (webData.availability_status && webData.availability_status !== 'NO_INFO') {
+      const srcScore = sourceWeightedVote({ npi: false, azure: false, scrape: true, pdf: false });
+      const confidence = finalScore({ sourceScore: srcScore, addressScore: 0.7, phoneScore: 0 });
+      
+      suggested.availability_status = {
+        oldValue: 'Not available',
+        suggestedValue: webData.availability_status,
+        confidence,
+        sourceType: "TRUELENS_WEBSITE",
+        action: 'INFORMATIONAL',
+        severity: 'INFO'
       };
     }
     
@@ -633,7 +698,7 @@ export async function runQualityAssurance(provider, runId) {
       severity: s.severity,
       action: s.action,
       source_type: s.sourceType || "UNKNOWN",
-      status: s.action === 'AUTO_ACCEPT' ? 'ACCEPTED' : 'OPEN'
+status: 'OPEN'
     }));
 
   if (issueRows.length === 0) return { needsReview: false };

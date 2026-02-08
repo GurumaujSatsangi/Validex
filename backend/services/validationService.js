@@ -19,6 +19,7 @@
 import { executeValidationWorkflow } from "./graph/workflow.js";
 import { supabase } from "../supabaseClient.js";
 import { sendRunCompletionEmail, sendAdminValidationSummaryEmail } from "./agents/emailGenerationAgent.js";
+import { runDirectoryManagement } from "./agents/directoryManagementAgent.js";
 
 /**
  * Run validation for a single provider using LangGraph
@@ -50,6 +51,10 @@ export async function runValidationForProvider(provider, runId) {
     const finalState = result.state;
 
     await upsertValidationIssuesFromDiscrepancies(provider, runId, finalState);
+
+    // Process AUTO_ACCEPT issues immediately after creation
+    console.log(`[ValidationService] Processing AUTO_ACCEPT issues for provider ${provider.id}`);
+    await runDirectoryManagement(provider, runId);
 
     return {
       needsReview: finalState.needsHumanReview,
@@ -127,26 +132,48 @@ async function upsertValidationIssuesFromDiscrepancies(provider, runId, finalSta
     console.warn("[ValidationService] Failed to clear existing issues:", deleteErr.message || deleteErr);
   }
 
-  const issueRows = discrepancies.map((d) => {
-    const fieldName = d.field || d.field_name || "unknown";
-    const severity = d.severity || "MEDIUM";
-    const issueCode = d.issue || "VALIDATION_DISCREPANCY";
-    const confidence = typeof d.confidence === 'number' ? d.confidence : (finalState?.confidence?.finalScore ?? 0);
-    const source = d.sourceType || d.source_type || issueCode;
-    const autoAccept = (source === 'NPI_API' || source === 'NPI_CERTIFICATIONS' || confidence >= 0.75);
-    return {
-      provider_id: provider.id,
-      run_id: runId,
-      field_name: fieldName,
-      old_value: fieldMap[fieldName] ?? null,
-      suggested_value: d.suggestedValue ?? d.suggested_value ?? null,
-      confidence,
-      severity,
-      action: autoAccept ? "AUTO_ACCEPT" : "NEEDS_REVIEW",
-      source_type: source,
-      status: autoAccept ? "ACCEPTED" : "OPEN",
-    };
-  });
+  const issueRows = discrepancies
+    .map((d) => {
+      const fieldName = d.field || d.field_name || "unknown";
+      const severity = d.severity || "MEDIUM";
+      const issueCode = d.issue || "VALIDATION_DISCREPANCY";
+      const confidence = typeof d.confidence === 'number' ? d.confidence : (finalState?.confidence?.finalScore ?? 0);
+      const source = d.sourceType || d.source_type || issueCode;
+      const normalizedField =
+        typeof fieldName === "string"
+          ? fieldName.toLowerCase().trim()
+          : "unknown";
+
+      const autoAccept =
+        source === "NPI_API" ||
+        source === "NPI_CERTIFICATIONS" ||
+        confidence >= 0.75;
+
+      const providedAction = d.action || d.action_type || null;
+      const action = providedAction || (autoAccept ? "AUTO_ACCEPT" : "NEEDS_REVIEW");
+      const status = d.status || (providedAction === "INFORMATIONAL" ? "ACCEPTED" : "OPEN");
+
+      return {
+        provider_id: provider.id,
+        run_id: runId,
+        field_name: normalizedField,
+        old_value: fieldMap[normalizedField] ?? null,
+        suggested_value: d.suggestedValue ?? d.suggested_value ?? null,
+        confidence,
+        severity,
+        action,
+        source_type: source,
+        status,
+      };
+    })
+    // Filter out issues with null/undefined suggested values - these are invalid
+    .filter(issueRow => {
+      if (issueRow.suggested_value === null || issueRow.suggested_value === undefined) {
+        console.warn(`[ValidationService] Skipping issue for field "${issueRow.field_name}" - suggested_value is null/undefined`);
+        return false;
+      }
+      return true;
+    });
 
   // Attempt insert with created_at; fallback without if schema lacks the column
   const nowIso = new Date().toISOString();
@@ -229,12 +256,22 @@ export async function runValidationForImportedProviders(providerIds) {
       }
     }
 
+    // Recalculate needs_review_count based on actual OPEN issues in the database
+    const { data: openIssues, error: countErr } = await supabase
+      .from('validation_issues')
+      .select('id', { count: 'exact' })
+      .eq('run_id', run.id)
+      .eq('status', 'OPEN');
+
+    const actualOpenCount = countErr ? needsReviewCount : (openIssues?.length ?? 0);
+    const actualSuccessCount = Math.max(0, providerIds.length - actualOpenCount);
+
     // Update validation run with results (schema-aligned columns)
     const completionPayload = {
       completed_at: new Date().toISOString(),
       processed: providerIds.length,
-      success_count: successCount,
-      needs_review_count: needsReviewCount,
+      success_count: actualSuccessCount,
+      needs_review_count: actualOpenCount,
       status: 'COMPLETED',
     };
     let { error: updateErr } = await supabase

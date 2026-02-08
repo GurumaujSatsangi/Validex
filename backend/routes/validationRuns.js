@@ -218,7 +218,7 @@ router.get('/:id/issues', async (req, res) => {
   const runId = req.params.id;
   const { data, error } = await supabase
     .from('validation_issues')
-    .select('*, providers(name, phone, email)')
+    .select('*, providers(name, phone, email, npi_id)')
     .eq('run_id', runId)
     .order('id', { ascending: true });
 

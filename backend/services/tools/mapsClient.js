@@ -1,92 +1,56 @@
 import axios from "axios";
 
-const AZURE_MAPS_BASE_URL = "https://atlas.microsoft.com/search/address/json";
-const AZURE_MAPS_FUZZY_BASE_URL = "https://atlas.microsoft.com/search/fuzzy/json";
+const AZURE_MAPS_ADDRESS_URL = "https://atlas.microsoft.com/search/address/json";
+const AZURE_MAPS_FUZZY_URL = "https://atlas.microsoft.com/search/fuzzy/json";
 const API_VERSION = "1.0";
 
+const MIN_POI_SCORE = 0.65;
+
 /**
- * Validates and normalizes a provider's address using Azure Maps Search Address API
- * @param {Object} provider - Provider object with address fields
- * @returns {Promise<Object>} Validation result with isValid, formattedAddress, location, etc.
+ * Validate and normalize a provider address using Azure Address Search
  */
 export async function validateAddressWithAzure(provider) {
   const subscriptionKey = process.env.AZURE_MAPS_SUBSCRIPTION_KEY;
 
   if (!subscriptionKey) {
-    console.warn("AZURE_MAPS_SUBSCRIPTION_KEY not set - skipping address validation");
-    return {
-      isValid: false,
-      reason: "API_KEY_MISSING",
-      formattedAddress: null,
-      postalCode: null,
-      city: null,
-      state: null,
-      location: null,
-      score: null,
-      raw: null
-    };
+    return { isValid: false, reason: "API_KEY_MISSING" };
   }
 
-  // Build address string from provider fields
   const addressParts = [
     provider.address_line1,
     provider.city,
     provider.state,
     provider.zip
-  ].filter(part => part && part.trim());
+  ].filter(Boolean);
 
   if (addressParts.length === 0) {
-    return {
-      isValid: false,
-      reason: "EMPTY_ADDRESS",
-      formattedAddress: null,
-      postalCode: null,
-      city: null,
-      state: null,
-      location: null,
-      score: null,
-      raw: null
-    };
+    return { isValid: false, reason: "EMPTY_ADDRESS" };
   }
 
-  const addressString = addressParts.join(", ");
-
   try {
-    const response = await axios.get(AZURE_MAPS_BASE_URL, {
+    const response = await axios.get(AZURE_MAPS_ADDRESS_URL, {
       params: {
         "api-version": API_VERSION,
         "subscription-key": subscriptionKey,
-        query: addressString
+        query: addressParts.join(", ")
       },
-      timeout: 5000 // 5 second timeout
+      timeout: 5000
     });
 
-    const results = response.data?.results;
-
-    if (!results || results.length === 0) {
-      return {
-        isValid: false,
-        reason: "NO_RESULTS",
-        formattedAddress: null,
-        postalCode: null,
-        city: null,
-        state: null,
-        location: null,
-        score: null,
-        raw: response.data
-      };
+    const result = response.data?.results?.[0];
+    if (!result) {
+      return { isValid: false, reason: "NO_RESULTS" };
     }
-
-    // Use the top result
-    const result = results[0];
 
     return {
       isValid: true,
-      reason: null,
       formattedAddress: result.address?.freeformAddress || null,
-      postalCode: result.address?.postalCode || null,
-      city: result.address?.municipality || null,
-      state: result.address?.countrySubdivision || null,
+      address: {
+        street: result.address?.streetName || null,
+        city: result.address?.municipality || null,
+        state: result.address?.countrySubdivision || null,
+        postalCode: result.address?.postalCode || null
+      },
       location: result.position
         ? { lat: result.position.lat, lon: result.position.lon }
         : null,
@@ -94,77 +58,32 @@ export async function validateAddressWithAzure(provider) {
       raw: result
     };
 
-  } catch (error) {
-    console.error("Azure Maps API error for provider", provider.id, error.message);
-    return {
-      isValid: false,
-      reason: "API_ERROR",
-      formattedAddress: null,
-      postalCode: null,
-      city: null,
-      state: null,
-      location: null,
-      score: null,
-      raw: { error: error.message }
-    };
+  } catch (err) {
+    return { isValid: false, reason: "API_ERROR", error: err.message };
   }
 }
 
-// Legacy function kept for backwards compatibility
-export async function lookupAddress(address) {
-  return null;
-}
-
 /**
- * Searches for a business/POI using Azure Maps Search Fuzzy API
- * @param {Object} provider - Provider object with name/city/state data
- * @returns {Promise<Object>} Normalized POI search result
+ * Search for provider business / POI using Azure Fuzzy Search
  */
 export async function searchBusinessWithAzure(provider) {
   const subscriptionKey = process.env.AZURE_MAPS_SUBSCRIPTION_KEY;
 
   if (!subscriptionKey) {
-    console.warn("AZURE_MAPS_SUBSCRIPTION_KEY not set - skipping POI search");
-    return {
-      isFound: false,
-      name: null,
-      formattedAddress: null,
-      street: null,
-      city: null,
-      state: null,
-      postalCode: null,
-      phone: null,
-      website: null,
-      categories: null,
-      location: null,
-      score: 0,
-      reason: "API_KEY_MISSING",
-      raw: null
-    };
+    return { isFound: false, reason: "API_KEY_MISSING" };
   }
 
-  const queryParts = [provider.name, provider.city, provider.state]
-    .filter(Boolean)
-    .map(part => part.trim())
-    .filter(part => part.length > 0);
+  // 🔧 Stronger query: name + full address when available
+  const queryParts = [
+    provider.name,
+    provider.address || provider.address_line1,
+    provider.city,
+    provider.state,
+    provider.zip
+  ].filter(Boolean);
 
   if (queryParts.length === 0) {
-    return {
-      isFound: false,
-      name: null,
-      formattedAddress: null,
-      street: null,
-      city: null,
-      state: null,
-      postalCode: null,
-      phone: null,
-      website: null,
-      categories: null,
-      location: null,
-      score: 0,
-      reason: "EMPTY_QUERY",
-      raw: null
-    };
+    return { isFound: false, reason: "EMPTY_QUERY" };
   }
 
   const queryString = queryParts.join(", ");
@@ -175,7 +94,7 @@ export async function searchBusinessWithAzure(provider) {
   });
 
   try {
-    const response = await axios.get(AZURE_MAPS_FUZZY_BASE_URL, {
+    const response = await axios.get(AZURE_MAPS_FUZZY_URL, {
       params: {
         "api-version": API_VERSION,
         "subscription-key": subscriptionKey,
@@ -187,63 +106,44 @@ export async function searchBusinessWithAzure(provider) {
       timeout: 5000
     });
 
-    const results = response.data?.results;
-
-    if (!results || results.length === 0) {
+    const result = response.data?.results?.[0];
+    if (!result || (result.score || 0) < MIN_POI_SCORE) {
       return {
         isFound: false,
-        name: null,
-        formattedAddress: null,
-        street: null,
-        city: null,
-        state: null,
-        postalCode: null,
-        phone: null,
-        website: null,
-        categories: null,
-        location: null,
-        score: 0,
-        reason: "NO_RESULTS",
+        reason: "LOW_CONFIDENCE_OR_NO_RESULTS",
         raw: response.data
       };
     }
 
-    const result = results[0];
     const poi = result.poi || {};
     const addr = result.address || {};
 
     return {
       isFound: true,
+      score: result.score,
       name: poi.name || null,
+      address: {
+        street: addr.streetName || null,
+        city: addr.municipality || null,
+        state: addr.countrySubdivision || null,
+        postalCode: addr.postalCode || null
+      },
       formattedAddress: addr.freeformAddress || null,
-      street: addr.streetName || null,
-      city: addr.municipality || null,
-      state: addr.countrySubdivision || null,
-      postalCode: addr.postalCode || null,
       phone: poi.phone || null,
       website: poi.url || null,
-      categories: poi.categories || poi.classifications?.map(c => c.names?.[0]?.name).filter(Boolean) || null,
-      location: result.position ? { lat: result.position.lat, lon: result.position.lon } : null,
-      score: result.score || null,
-      reason: null,
+      categories:
+        poi.categories ||
+        poi.classifications?.map(c => c.names?.[0]?.name).filter(Boolean) ||
+        null,
+      location: result.position
+        ? { lat: result.position.lat, lon: result.position.lon }
+        : null,
       raw: result
     };
 
   } catch (error) {
-    console.error("Azure Maps POI search error for provider", provider.id, error.message);
     return {
       isFound: false,
-      name: null,
-      formattedAddress: null,
-      street: null,
-      city: null,
-      state: null,
-      postalCode: null,
-      phone: null,
-      website: null,
-      categories: null,
-      location: null,
-      score: 0,
       reason: "API_ERROR",
       raw: { error: error.message }
     };

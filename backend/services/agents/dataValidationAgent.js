@@ -2,6 +2,8 @@ import { supabase } from "../../supabaseClient.js";
 import { getNpiDataByNpiId, searchNpiByName } from "../tools/npiClient.js";
 import { validateAddressWithAzure } from "../tools/mapsClient.js";
 
+const AZURE_MIN_SCORE = 0.7;
+
 export async function runDataValidation(provider) {
   // ===============================================
   // STEP 1: NPI VALIDATION & ENRICHMENT
@@ -10,94 +12,83 @@ export async function runDataValidation(provider) {
   let npiIdToUpdate = null;
 
   if (provider.npi_id && provider.npi_id.trim().length > 0) {
-    // Provider already has NPI - lookup by NPI ID
     console.info("[NPI] Looking up by NPI ID:", provider.npi_id, "for provider", provider.id);
     npiData = await getNpiDataByNpiId(provider.npi_id);
   } else {
-    // Provider does NOT have NPI - search by name/location
     console.info("[NPI] Searching by name for provider", provider.id);
     npiData = await searchNpiByName(provider);
 
-    // If NPI found, update provider record with the NPI ID
-    if (npiData && npiData.isFound && npiData.npi) {
+    if (npiData?.isFound && npiData.npi) {
       npiIdToUpdate = npiData.npi;
-      console.info("[NPI] Found NPI ID", npiIdToUpdate, "for provider", provider.id, "- updating record");
-      
+
       try {
-        const { error: updateError } = await supabase
+        const { error } = await supabase
           .from("providers")
           .update({ npi_id: npiIdToUpdate })
           .eq("id", provider.id);
 
-        if (updateError) {
-          console.error("Failed to update provider NPI ID", provider.id, updateError.message || updateError);
-        } else {
-          // Update local provider object to reflect change
-          provider.npi_id = npiIdToUpdate;
-        }
+        if (!error) provider.npi_id = npiIdToUpdate;
       } catch (err) {
-        console.error("Unexpected error updating provider NPI ID", provider.id, err);
+        console.error("Error updating provider NPI ID", err);
       }
     }
   }
 
-  // Store NPI data in provider_sources regardless of found status
-  if (npiData) {
-    try {
-      const { error } = await supabase.from("provider_sources").insert({
-        provider_id: provider.id,
-        source_type: "NPI_API",
-        raw_data: npiData
-      });
-      if (error) {
-        console.error('Failed to insert NPI provider_sources for', provider.id, error.message || error);
-      }
-    } catch (err) {
-      console.error('Unexpected error inserting NPI provider_sources', err);
-    }
-  } else {
-    // No NPI data found at all - insert negative record
-    try {
-      const { error } = await supabase.from("provider_sources").insert({
-        provider_id: provider.id,
-        source_type: "NPI_API",
-        raw_data: { isFound: false }
-      });
-      if (error) {
-        console.error('Failed to insert NPI not-found provider_sources for', provider.id, error.message || error);
-      }
-    } catch (err) {
-      console.error('Unexpected error inserting NPI not-found provider_sources', err);
-    }
+  // Store NPI source (always)
+  try {
+    await supabase.from("provider_sources").insert({
+      provider_id: provider.id,
+      source_type: "NPI_API",
+      raw_data: npiData || { isFound: false }
+    });
+  } catch (err) {
+    console.error("Error inserting NPI provider_sources", err);
   }
 
   // ===============================================
-  // STEP 2: AZURE MAPS ADDRESS VALIDATION
+  // STEP 2: AZURE MAPS ADDRESS VALIDATION (FIXED)
   // ===============================================
   const azureData = await validateAddressWithAzure(provider);
 
   if (azureData) {
+    // Store Azure result (audit trail)
     try {
-      const { error } = await supabase.from("provider_sources").insert({
+      await supabase.from("provider_sources").insert({
         provider_id: provider.id,
         source_type: "AZURE_MAPS",
-        raw_data: {
-          isValid: azureData.isValid,
-          formattedAddress: azureData.formattedAddress,
-          postalCode: azureData.postalCode,
-          city: azureData.city,
-          state: azureData.state,
-          location: azureData.location,
-          score: azureData.score,
-          reason: azureData.reason,
-          raw: azureData.raw
-        }
+        raw_data: azureData
       });
-      if (error) {
-        console.error('Failed to insert AZURE_MAPS provider_sources for', provider.id, error.message || error);
-      }
     } catch (err) {
-      console.error('Unexpected error inserting AZURE_MAPS provider_sources', err);
+      console.error("Error inserting AZURE_MAPS provider_sources", err);
+    }
+
+    // ✅ APPLY AZURE RESULT IF CONFIDENT
+    if (azureData.isValid && (azureData.score ?? 0) >= AZURE_MIN_SCORE) {
+      const addressUpdate = {
+        address_line1: azureData.address?.street || provider.address_line1,
+        city: azureData.address?.city || provider.city,
+        state: azureData.address?.state || provider.state,
+        zip: azureData.address?.postalCode || provider.zip,
+        address_verified: true,
+        address_source: "AZURE_MAPS",
+        updated_at: new Date().toISOString()
+      };
+
+      try {
+        const { error } = await supabase
+          .from("providers")
+          .update(addressUpdate)
+          .eq("id", provider.id);
+
+        if (!error) {
+          console.info("[Azure Maps] Address validated and normalized for provider", provider.id);
+
+          // keep in-memory provider in sync
+          Object.assign(provider, addressUpdate);
+        }
+      } catch (err) {
+        console.error("[Azure Maps] Failed to update provider address", err);
+      }
     }
   }
 

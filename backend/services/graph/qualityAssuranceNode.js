@@ -97,6 +97,46 @@ export async function qualityAssuranceNode(state) {
     }
   }
 
+  // TrueLens appointment availability (informational)
+  if (externalResults.truelens?.success && externalResults.truelens?.data) {
+    const tlData = externalResults.truelens.data;
+    const appointmentTimings = Array.isArray(tlData.appointment_timings)
+      ? tlData.appointment_timings
+      : [];
+
+    if (appointmentTimings.length > 0) {
+      const formattedTimings = appointmentTimings
+        .map(t => `${t.day || 'Day'}: ${Array.isArray(t.time_slots) && t.time_slots.length > 0 ? t.time_slots.join(', ') : (t.status || 'Closed')}`)
+        .join('; ');
+
+      if (formattedTimings) {
+        validationDiscrepancies.push({
+          field: "appointment_availability",
+          issue: "APPOINTMENT_AVAILABILITY",
+          severity: "LOW",
+          sourceType: "TRUELENS_WEBSITE",
+          suggestedValue: formattedTimings,
+          confidence: 0.6,
+          action: "INFORMATIONAL",
+          status: "ACCEPTED"
+        });
+      }
+    }
+
+    if (tlData.availability_status && tlData.availability_status !== "NO_INFO") {
+      validationDiscrepancies.push({
+        field: "availability_status",
+        issue: "APPOINTMENT_STATUS",
+        severity: "LOW",
+        sourceType: "TRUELENS_WEBSITE",
+        suggestedValue: tlData.availability_status,
+        confidence: 0.6,
+        action: "INFORMATIONAL",
+        status: "ACCEPTED"
+      });
+    }
+  }
+
   // Website match
   if (externalResults.website?.success && externalResults.website?.data) {
     const webPhone = externalResults.website.data.phone || null;
@@ -187,9 +227,16 @@ export async function qualityAssuranceNode(state) {
   if (state.validationResults?.hardReject) reviewReasons.push("MISSING_OR_INVALID_REQUIRED_FIELDS");
 
   // Deduplicate discrepancies: keep only highest-confidence suggestion per field
+  // Also filter out any discrepancies with null/undefined suggested values
   const fieldSuggestionMap = new Map();
 
   for (const disc of validationDiscrepancies) {
+    // Skip discrepancies with null or undefined suggested values
+    if (disc.suggestedValue === null || disc.suggestedValue === undefined) {
+      console.warn(`[QA Node] Skipping discrepancy for field "${disc.field}" - suggested value is null/undefined`);
+      continue;
+    }
+
     const field = disc.field || "unknown";
     const confidence = disc.confidence || 0;
     

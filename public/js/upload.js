@@ -50,13 +50,15 @@ document.getElementById('uploadForm')?.addEventListener('submit', async (e) => {
       Swal.fire({
         title: 'Running Validation',
         html: `
-          <div class="mb-3">
-            <div class="progress" style="height: 25px;">
-              <div id="validation-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+          <div class="mb-3" style="margin-bottom: 20px;">
+            <div class="progress" style="height: 28px; background-color: #f3f4f6; border-radius: 8px; overflow: hidden; position: relative;">
+              <div id="validation-progress-bar" class="progress-bar" role="progressbar" style="width: 0%; background: linear-gradient(90deg, #000 0%, #333 100%); color: #fff; font-weight: 600; font-size: 0.875rem; display: flex; align-items: center; justify-content: center; transition: width 0.5s ease-out;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                <span style="position: relative; z-index: 1;">0%</span>
+              </div>
             </div>
           </div>
-          <p id="validation-status" class="text-muted">Initializing validation...</p>
-          <p id="validation-eta" class="text-muted small">Estimated time remaining: calculating...</p>
+          <p id="validation-status" style="color: #6b7280; font-size: 0.938rem; margin: 12px 0 8px 0;">Initializing validation...</p>
+          <p id="validation-eta" style="color: #9ca3af; font-size: 0.813rem; margin: 0;">Calculating estimated time...</p>
         `,
         allowOutsideClick: false,
         showConfirmButton: false,
@@ -75,30 +77,38 @@ document.getElementById('uploadForm')?.addEventListener('submit', async (e) => {
                 const etaText = document.getElementById('validation-eta');
                 
                 if (progressBar) {
-                  progressBar.style.width = progress + '%';
-                  progressBar.setAttribute('aria-valuenow', progress);
-                  progressBar.textContent = progress + '%';
+                  const clampedProgress = Math.min(100, Math.max(0, progress));
+                  progressBar.style.width = clampedProgress + '%';
+                  progressBar.setAttribute('aria-valuenow', clampedProgress);
+                  const innerSpan = progressBar.querySelector('span');
+                  if (innerSpan) {
+                    innerSpan.textContent = clampedProgress + '%';
+                  }
                 }
                 
                 if (statusText) {
                   statusText.textContent = `Processing: ${latestRun.processed || 0} of ${latestRun.total_providers || 0} providers`;
                 }
                 
-                // Calculate ETA
-                if (etaText && latestRun.processed > 0) {
+                // Calculate ETA with better formatting
+                if (etaText && latestRun.processed > 0 && latestRun.processed < latestRun.total_providers) {
                   const elapsed = Date.now() - startTime;
                   const avgTimePerProvider = elapsed / latestRun.processed;
                   const remaining = latestRun.total_providers - latestRun.processed;
                   const etaMs = remaining * avgTimePerProvider;
                   const etaSeconds = Math.ceil(etaMs / 1000);
-                  const etaMinutes = Math.floor(etaSeconds / 60);
-                  const etaSecondsRemainder = etaSeconds % 60;
                   
-                  if (etaMinutes > 0) {
-                    etaText.textContent = `Estimated time remaining: ${etaMinutes}m ${etaSecondsRemainder}s`;
+                  if (etaSeconds > 60) {
+                    const etaMinutes = Math.floor(etaSeconds / 60);
+                    const etaSecondsRemainder = etaSeconds % 60;
+                    etaText.textContent = `Estimated time: ${etaMinutes}m ${etaSecondsRemainder}s remaining`;
+                  } else if (etaSeconds > 0) {
+                    etaText.textContent = `Estimated time: ${etaSeconds}s remaining`;
                   } else {
-                    etaText.textContent = `Estimated time remaining: ${etaSeconds}s`;
+                    etaText.textContent = `Almost complete...`;
                   }
+                } else if (etaText && latestRun.processed === 0) {
+                  etaText.textContent = `Starting validation...`;
                 }
 
                 // Check if completed
@@ -198,13 +208,15 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
     Swal.fire({
       title: 'Processing PDF',
       html: `
-        <div class="mb-3">
-          <div class="progress" style="height: 25px; background-color: #2a2a3a;">
-            <div id="pdf-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%; background-color: #ffe600; color: #000;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+        <div class="mb-3" style="margin-bottom: 20px;">
+          <div class="progress" style="height: 28px; background-color: #f3f4f6; border-radius: 8px; overflow: hidden; position: relative;">
+            <div id="pdf-progress-bar" class="progress-bar" role="progressbar" style="width: 0%; background: linear-gradient(90deg, #000 0%, #333 100%); color: #fff; font-weight: 600; font-size: 0.875rem; display: flex; align-items: center; justify-content: center; transition: width 0.3s ease-out;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+              <span style="position: relative; z-index: 1;">0%</span>
+            </div>
           </div>
         </div>
-        <p id="pdf-status" class="text-muted">Uploading and scanning PDF...</p>
-        <p id="pdf-eta" class="text-muted small">Estimated time: ~1-2 minutes</p>
+        <p id="pdf-status" style="color: #6b7280; font-size: 0.938rem; margin: 12px 0 8px 0;">Uploading and scanning PDF...</p>
+        <p id="pdf-eta" style="color: #9ca3af; font-size: 0.813rem; margin: 0;">Estimated time: 1-2 minutes</p>
       `,
       allowOutsideClick: false,
       showConfirmButton: false,
@@ -212,20 +224,23 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
         // Simulate progress during upload (0-30% during upload, 30-95% during OCR)
         let currentProgress = 0;
         pollInterval = setInterval(() => {
-          if (currentProgress < 95) {
+          if (currentProgress < 100) {
             // Slower, more realistic progress
-            currentProgress += Math.random() * 5 + 1;
-            if (currentProgress > 95) currentProgress = 95;
+            currentProgress += Math.random() * 3 + 1;
+            if (currentProgress > 100) currentProgress = 100;
             
             const progressBar = document.getElementById('pdf-progress-bar');
             const statusText = document.getElementById('pdf-status');
             const etaText = document.getElementById('pdf-eta');
             
             if (progressBar) {
-              const percent = Math.round(currentProgress);
+              const percent = Math.min(100, Math.max(0, Math.round(currentProgress)));
               progressBar.style.width = percent + '%';
               progressBar.setAttribute('aria-valuenow', percent);
-              progressBar.textContent = percent + '%';
+              const innerSpan = progressBar.querySelector('span');
+              if (innerSpan) {
+                innerSpan.textContent = percent + '%';
+              }
             }
             
             // Calculate ETA
@@ -236,18 +251,23 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
             if (statusText) {
               if (currentProgress < 30) {
                 statusText.textContent = 'Uploading PDF to server...';
-              } else if (currentProgress < 95) {
-                statusText.textContent = 'Running OCR on document...';
+              } else if (currentProgress < 70) {
+                statusText.textContent = 'Analyzing document structure...';
+              } else if (currentProgress < 100) {
+                statusText.textContent = 'Extracting provider data with OCR...';
               }
             }
             
             if (etaText && remainingSeconds > 0) {
               if (remainingSeconds > 60) {
-                const minutes = Math.ceil(remainingSeconds / 60);
-                etaText.textContent = `Estimated time remaining: ~${minutes} minute${minutes > 1 ? 's' : ''}`;
+                const minutes = Math.floor(remainingSeconds / 60);
+                const secs = remainingSeconds % 60;
+                etaText.textContent = `Estimated time: ${minutes}m ${secs}s remaining`;
               } else {
-                etaText.textContent = `Estimated time remaining: ~${remainingSeconds} seconds`;
+                etaText.textContent = `Estimated time: ${remainingSeconds}s remaining`;
               }
+            } else if (etaText) {
+              etaText.textContent = `Finalizing...`;
             }
           }
         }, 800);
@@ -281,7 +301,7 @@ document.getElementById('uploadPdfForm')?.addEventListener('submit', async (e) =
       icon: 'success',
       title: 'PDF Processed Successfully!',
       html: `
-        <p>✓ <strong>${json.providersInserted}</strong> providers extracted via OCR</p>
+        <p><strong>${json.providersInserted}</strong> providers extracted via OCR</p>
         <p><small>Validation run started: ${json.runId}</small></p>
         <p class="text-muted small">Redirecting to validation runs...</p>
       `,

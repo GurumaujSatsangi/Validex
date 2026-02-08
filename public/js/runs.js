@@ -42,7 +42,7 @@ async function loadRuns(){
         <td>${r.completed_at ? escapeHtml(new Date(r.completed_at).toLocaleString()) : '—'}</td>
         <td>
           <div class="d-flex gap-2 flex-wrap">
-            ${r.needs_review_count > 0 ? `<button class="btn btn-sm btn-info view-issues-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-eye"></i> View Issues</button>` : '<span class="text-muted">No issues</span>'}
+            <button class="btn btn-sm btn-info view-issues-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-eye"></i> View Issues</button>
             ${r.needs_review_count === 0 ? `<button class="btn btn-sm btn-success download-csv-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-download"></i> Download</button>` : ''}
             <button class="btn btn-sm btn-outline-danger delete-run-btn" data-run-id="${escapeHtml(String(r.id))}"><i class="bi bi-trash"></i> Delete</button>
           </div>
@@ -282,9 +282,8 @@ document.addEventListener('click', async (ev) => {
       return;
     }
 
-    const openIssues = issues.filter(i => i.status === 'OPEN').length;
-    const needsReviewCount = issues.filter(i => i.action === 'NEEDS_REVIEW').length;
-    const hasOpen = openIssues > 0;
+    const needsReviewCount = issues.filter(i => i.status === 'OPEN').length;
+    const hasOpen = needsReviewCount > 0;
 
     // Build Bootstrap-styled HTML table
     let html = `
@@ -337,6 +336,11 @@ document.addEventListener('click', async (ev) => {
       const sourceType = it.source_type || 'UNKNOWN';
       const action = it.action || 'NEEDS_REVIEW';
       const actionBadgeClass = action === 'AUTO_ACCEPT' ? 'bg-success' : action === 'NEEDS_REVIEW' ? 'bg-warning' : 'bg-warning text-dark';
+      const npiId = it.providers && it.providers.npi_id ? String(it.providers.npi_id).trim() : '';
+      const npiRegistryUrl = npiId ? `https://npiregistry.cms.hhs.gov/provider-view/${encodeURIComponent(npiId)}` : '';
+      const npiLink = isOpen && action === 'NEEDS_REVIEW' && npiRegistryUrl
+        ? `<a href="${npiRegistryUrl}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" style="padding: 2px 6px; font-size: 0.75rem;">Verify Data <i class="bi bi-box-arrow-up-right"></i></a>`
+        : '';
       
       // Format suggested value - handle JSON arrays
       let suggestedDisplay = it.suggested_value || '';
@@ -378,6 +382,7 @@ document.addEventListener('click', async (ev) => {
               <button class="btn btn-sm btn-danger reject-modal-issue" data-issue-id="${escapeHtml(it.id)}">
                 <i class="bi bi-x-circle"></i>
               </button>
+              ${npiLink}
             ` : `
               <span class="text-muted">Closed</span>
             `}
@@ -443,6 +448,9 @@ document.addEventListener('click', async (ev) => {
               const row = document.querySelector(`tr[data-issue-id="${issueId}"]`);
               if (row) markRowClosed(row, 'ACCEPTED');
               refreshBulkButtons();
+              
+              // Refresh the runs table in the background
+              await loadRuns();
             } catch (err) {
               alert('Error: ' + err.message);
               e.currentTarget.disabled = false;
@@ -468,6 +476,9 @@ document.addEventListener('click', async (ev) => {
               const row = document.querySelector(`tr[data-issue-id="${issueId}"]`);
               if (row) markRowClosed(row, 'REJECTED');
               refreshBulkButtons();
+              
+              // Refresh the runs table in the background
+              await loadRuns();
             } catch (err) {
               alert('Error: ' + err.message);
               e.currentTarget.disabled = false;

@@ -1,4 +1,4 @@
-/* ==============================================
+﻿/* ==============================================
   Validex Modern SaaS Dashboard
    Black & White Minimal Theme
    ============================================== */
@@ -705,6 +705,43 @@ tbody td code {
   color: var(--text-muted);
 }
 
+/* File Input Styling - Minimal & Clean */
+input[type="file"].form-control {
+  padding: 10px 14px;
+  cursor: pointer;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-medium);
+  transition: all 0.2s ease;
+}
+
+input[type="file"].form-control:hover {
+  border-color: var(--black);
+  background: var(--bg-accent);
+}
+
+input[type="file"].form-control:focus {
+  border-color: var(--black);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
+input[type="file"].form-control::file-selector-button {
+  padding: 6px 12px;
+  margin: 0 8px 0 0;
+  border: 1px solid var(--black);
+  background: var(--black);
+  color: var(--white);
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+input[type="file"].form-control::file-selector-button:hover {
+  background: var(--white);
+  color: var(--black);
+  border-color: var(--black);
+}
 textarea.form-control {
   resize: vertical;
   min-height: 100px;
@@ -1023,3 +1060,4 @@ select.form-control {
     white-space: nowrap;
   }
 }
+
