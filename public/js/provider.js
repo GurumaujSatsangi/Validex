@@ -29,6 +29,16 @@ async function load() {
     const tbody = detailsTbl.querySelector('tbody');
     tbody.innerHTML = '';
 
+    const issues = issuesJson.issues || [];
+    const getIssueValue = (fieldName) => {
+      const normalized = String(fieldName || '').toLowerCase();
+      const matches = issues.filter(it => String(it.field_name || '').toLowerCase() === normalized);
+      if (matches.length === 0) return null;
+      const accepted = matches.find(it => it.status === 'ACCEPTED');
+      const chosen = accepted || matches[0];
+      return chosen.suggested_value ?? null;
+    };
+
     const rows = [
       ['Name', p.name],
       ['NPI', p.npi_id],
@@ -39,7 +49,10 @@ async function load() {
       ['State', p.state],
       ['Zip', p.zip],
       ['Speciality', p.speciality],
-      ['License', p.license_number]
+      ['License', p.license_number],
+      ['Certification', p.primary_certification || getIssueValue('certification')],
+      ['Appointment Availability', getIssueValue('appointment_availability')],
+      ['Availability Status', getIssueValue('availability_status')]
     ];
 
     for (const r of rows) {
@@ -57,8 +70,6 @@ async function load() {
     const issuesList = document.getElementById('providerIssuesList');
     const issuesSummary = document.getElementById('issuesSummary');
     const noIssuesMsg = document.getElementById('noIssuesMsg');
-    const issues = issuesJson.issues || [];
-
     if (issues.length === 0) {
       issuesList.style.display = 'none';
       issuesSummary.style.display = 'none';

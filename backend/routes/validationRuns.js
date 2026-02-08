@@ -276,8 +276,30 @@ router.get('/:id/export', async (req, res) => {
 
   if (loadErr) return res.status(500).json({ error: 'Export failed' });
 
+  const { data: issueRows, error: issueErr } = await supabase
+    .from('validation_issues')
+    .select('provider_id, field_name, suggested_value, status, id')
+    .eq('run_id', runId)
+    .in('field_name', ['certification', 'appointment_availability', 'availability_status'])
+    .order('id', { ascending: false });
+
+  if (issueErr) return res.status(500).json({ error: 'Failed to gather issue data for export' });
+
+  const issueMap = new Map();
+  (issueRows || []).forEach(row => {
+    const key = `${row.provider_id}:${row.field_name}`;
+    if (!issueMap.has(key)) {
+      issueMap.set(key, row.suggested_value);
+    }
+  });
+
+  const getIssueValue = (providerId, fieldName) => {
+    const key = `${providerId}:${fieldName}`;
+    return issueMap.get(key) ?? null;
+  };
+
   // Build CSV with run-specific data
-  let csv = 'name,phone,email,address_line1,city,state,zip,speciality,license_number\n';
+  let csv = 'name,phone,email,address_line1,city,state,zip,speciality,license_number,certification,appointment_availability,availability_status\n';
 
   providers.forEach(p => {
     // Escape quotes in CSV fields
@@ -285,7 +307,10 @@ router.get('/:id/export', async (req, res) => {
       if (!val) return '""';
       return `"${String(val).replace(/"/g, '""')}"`;
     };
-    csv += `${escape(p.name)},${escape(p.phone)},${escape(p.email)},${escape(p.address_line1)},${escape(p.city)},${escape(p.state)},${escape(p.zip)},${escape(p.speciality)},${escape(p.license_number)}\n`;
+    const certification = p.primary_certification || getIssueValue(p.id, 'certification');
+    const appointmentAvailability = getIssueValue(p.id, 'appointment_availability');
+    const availabilityStatus = getIssueValue(p.id, 'availability_status');
+    csv += `${escape(p.name)},${escape(p.phone)},${escape(p.email)},${escape(p.address_line1)},${escape(p.city)},${escape(p.state)},${escape(p.zip)},${escape(p.speciality)},${escape(p.license_number)},${escape(certification)},${escape(appointmentAvailability)},${escape(availabilityStatus)}\n`;
   });
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
