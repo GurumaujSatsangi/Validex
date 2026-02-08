@@ -8,11 +8,12 @@
  * All results written to state, no local variables
  */
 
-import { getNpiDataByNpiId, searchNpiByName } from "../tools/npiClient.js";
+import { getNpiDataByNpiId, searchNpiByName, searchNpiOnlineDatabase } from "../tools/npiClient.js";
 import { scrapeNPICertifications } from "../tools/npiCertificationsScraper.js";
 import { scrapeTrueLensWebsite } from "../tools/trueLensWebsiteScraper.js";
 import { scrapeProviderInfo } from "../tools/webScraper.js";
 import { validateAddressWithAzure, searchBusinessWithAzure } from "../tools/mapsClient.js";
+import { supabase } from "../../supabaseClient.js";
 
 export async function informationEnrichmentNode(state) {
   console.log("[InfoEnrichment] Starting enrichment for provider:", state.providerId);
@@ -21,8 +22,9 @@ export async function informationEnrichmentNode(state) {
   const validationSources = [...(state.validationSources || [])];
   const errorLog = [...(state.errorLog || [])];
   const externalResults = { ...(state.externalResults || {}) };
+  let normalizedData = { ...(state.normalizedData || state.inputData || {}) };
 
-  // NPI verification
+  // NPI verification with web scraping fallback
   try {
     let npiData = null;
     if (input.npi) {
@@ -33,9 +35,38 @@ export async function informationEnrichmentNode(state) {
         city: input.city,
         state: input.state,
       });
+
+      // If API search failed or returned no results, try web scraping on npidb.org and providerwire.com
+      if (!npiData || !npiData.isFound) {
+        console.info("[InfoEnrichment] NPI API search unsuccessful, attempting web scraping on online databases");
+        npiData = await searchNpiOnlineDatabase({
+          name: input.name,
+          city: input.city,
+          state: input.state,
+        });
+      }
     }
 
-    if (npiData && npiData.isFound) {
+    if (npiData && npiData.isFound && npiData.npi) {
+      // Found NPI - persist to database if provider doesn't have one
+      if (!input.npi) {
+        try {
+          const { error: updateErr } = await supabase
+            .from("providers")
+            .update({ npi_id: npiData.npi })
+            .eq("id", state.providerId);
+
+          if (updateErr) {
+            console.warn("[InfoEnrichment] Failed to update NPI in database:", updateErr.message);
+          } else {
+            console.info("[InfoEnrichment] Successfully saved found NPI to database:", npiData.npi);
+            normalizedData.npi = npiData.npi;
+          }
+        } catch (dbErr) {
+          console.error("[InfoEnrichment] Error updating NPI in database:", dbErr.message);
+        }
+      }
+
       externalResults.npi = { success: true, data: npiData, error: null };
       validationSources.push({ source: "NPI_API", success: true, timestamp: new Date().toISOString() });
     } else {
@@ -160,8 +191,8 @@ export async function informationEnrichmentNode(state) {
 
   // NPI Certifications enrichment
   try {
-    if (input.npi) {
-      const certs = await scrapeNPICertifications(input.npi, input.name);
+    if (normalizedData.npi) {
+      const certs = await scrapeNPICertifications(normalizedData.npi, normalizedData.name);
       if (certs && certs.isFound && (certs.certifications || []).length > 0) {
         externalResults.certifications = { success: true, data: certs, error: null };
         validationSources.push({ source: "NPI_CERTIFICATIONS", success: true, timestamp: new Date().toISOString() });
@@ -181,6 +212,7 @@ export async function informationEnrichmentNode(state) {
 
   return {
     ...state,
+    normalizedData,
     externalResults,
     validationSources,
     errorLog,

@@ -51,8 +51,8 @@ function parseProvidersFromOcr(ocrLines) {
   // Combine all text for easier parsing
   const fullText = textLines.join('\n');
 
-  // Split by common provider delimiters or patterns (try multiple delimiters)
-  const blocks = fullText.split(/(?:^|\n)(?:\d+\.|PROVIDER|---+|^[A-Z\s]{10,50}$)/mi);
+  // Split by common provider delimiters or patterns (strict, predictable delimiters only)
+  const blocks = fullText.split(/(?:^|\n)(?:\d+\.|PROVIDER|---+)/mi);
 
   for (const block of blocks) {
     if (!block.trim()) continue;
