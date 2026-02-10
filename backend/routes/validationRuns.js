@@ -50,6 +50,8 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   console.log(`[ValidationRuns] POST /api/validation-runs hit at ${new Date().toISOString()}`);
   try {
+    const { cronJobId } = req.body;
+    
     const { data: providers, error: loadErr } = await supabase
       .from("providers")
       .select("*");
@@ -59,9 +61,21 @@ router.post("/", async (req, res) => {
     const total = providers.length;
     console.log(`[ValidationRuns] Starting validation run for ${total} providers`);
 
+    // Build insert payload
+    const insertPayload = {
+      total_providers: total,
+      started_at: new Date().toISOString()
+    };
+
+    // If cronJobId is provided, set the type column with the cron job info
+    if (cronJobId) {
+      insertPayload.type = `Scheduled Cron Job ${cronJobId}`;
+      console.log(`[ValidationRuns] This is a scheduled cron job run: ${insertPayload.type}`);
+    }
+
     const { data: run, error: runErr } = await supabase
       .from("validation_runs")
-      .insert({ total_providers: total, started_at: new Date().toISOString() })
+      .insert(insertPayload)
       .select()
       .single();
 
