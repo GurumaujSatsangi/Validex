@@ -1,4 +1,5 @@
 import axios from "axios";
+import { normalizeProviderNameForSearch } from "./nameNormalization.js";
 
 const AZURE_MAPS_ADDRESS_URL = "https://atlas.microsoft.com/search/address/json";
 const AZURE_MAPS_FUZZY_URL = "https://atlas.microsoft.com/search/fuzzy/json";
@@ -70,12 +71,16 @@ export async function searchBusinessWithAzure(provider) {
   const subscriptionKey = process.env.AZURE_MAPS_SUBSCRIPTION_KEY;
 
   if (!subscriptionKey) {
+    console.warn("[Azure POI] API key missing");
     return { isFound: false, reason: "API_KEY_MISSING" };
   }
 
+  // Normalize provider name for better search results
+  const normalizedName = normalizeProviderNameForSearch(provider.name);
+
   // 🔧 Stronger query: name + full address when available
   const queryParts = [
-    provider.name,
+    normalizedName,
     provider.address || provider.address_line1,
     provider.city,
     provider.state,
@@ -83,15 +88,17 @@ export async function searchBusinessWithAzure(provider) {
   ].filter(Boolean);
 
   if (queryParts.length === 0) {
+    console.warn("[Azure POI] Empty query (no data provided)");
     return { isFound: false, reason: "EMPTY_QUERY" };
   }
 
   const queryString = queryParts.join(", ");
 
-  console.info("[Azure POI] Searching", {
-    providerId: provider.id,
-    query: queryString
-  });
+  console.info("\n[Azure POI] ========== Starting Azure Search ==========");
+  console.info("[Azure POI] Provider ID:", provider.id);
+  console.info("[Azure POI] Original Name:", provider.name);
+  console.info("[Azure POI] Normalized Name:", normalizedName);
+  console.info("[Azure POI] Query String:", queryString);
 
   try {
     const response = await axios.get(AZURE_MAPS_FUZZY_URL, {
@@ -106,11 +113,29 @@ export async function searchBusinessWithAzure(provider) {
       timeout: 5000
     });
 
+    console.info("[Azure POI] API Response received");
+    console.info("[Azure POI] Results count:", response.data?.results?.length || 0);
+
     const result = response.data?.results?.[0];
-    if (!result || (result.score || 0) < MIN_POI_SCORE) {
+    if (!result) {
+      console.warn("[Azure POI] ✗ No results returned from API");
+      return {
+        isFound: false,
+        reason: "NO_RESULTS",
+        raw: response.data
+      };
+    }
+
+    const score = result.score || 0;
+    console.info("[Azure POI] Top result score:", score);
+    console.info("[Azure POI] Min required score:", MIN_POI_SCORE);
+
+    if (score < MIN_POI_SCORE) {
+      console.warn(`[Azure POI] ✗ Score (${score}) below threshold (${MIN_POI_SCORE})`);
       return {
         isFound: false,
         reason: "LOW_CONFIDENCE_OR_NO_RESULTS",
+        score: score,
         raw: response.data
       };
     }
@@ -118,9 +143,14 @@ export async function searchBusinessWithAzure(provider) {
     const poi = result.poi || {};
     const addr = result.address || {};
 
+    console.info("[Azure POI] ✓ Match found!");
+    console.info("[Azure POI] POI Name:", poi.name || 'N/A');
+    console.info("[Azure POI] Address:", addr.freeformAddress || 'N/A');
+    console.info("[Azure POI] ========== Azure Search Complete ==========\n");
+
     return {
       isFound: true,
-      score: result.score,
+      score: score,
       name: poi.name || null,
       address: {
         street: addr.streetName || null,
@@ -142,6 +172,7 @@ export async function searchBusinessWithAzure(provider) {
     };
 
   } catch (error) {
+    console.error("[Azure POI] ✗ Error during search:", error.message);
     return {
       isFound: false,
       reason: "API_ERROR",

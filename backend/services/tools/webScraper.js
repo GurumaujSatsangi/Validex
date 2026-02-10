@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { normalizeProviderNameForSearch } from "./nameNormalization.js";
 
 /**
  * Attempts to scrape provider information from public sources as a fallback
@@ -72,8 +73,16 @@ async function scrapeGenericSearch(provider) {
       sources: []
     };
 
+    // Normalize provider name for better search results
+    const normalizedProvider = {
+      ...provider,
+      name: normalizeProviderNameForSearch(provider.name)
+    };
+
+    console.info("[Web Scraper] Normalized provider name for search:", normalizedProvider.name);
+
     // Search across multiple provider directories
-    const searchResults = await searchProviderOnline(provider);
+    const searchResults = await searchProviderOnline(normalizedProvider);
     
     if (searchResults && searchResults.length > 0) {
       scrapedData.isFound = true;
@@ -172,45 +181,73 @@ async function scrapeGenericSearch(provider) {
  */
 async function searchProviderOnline(provider) {
   try {
-    console.info("[Provider Search] Searching for:", provider.name, "NPI:", provider.npi_id);
+    console.info("\n[Provider Search] ========== Starting Multi-Source Search ==========");
+    console.info("[Provider Search] Searching for:", provider.name, "| NPI:", provider.npi_id);
     
     const results = [];
     
     // SOURCE 1: Healthgrades
     try {
+      console.info("[Provider Search] Attempting Healthgrades search...");
       const healthgradesData = await scrapeHealthgrades(provider);
-      if (healthgradesData) results.push(healthgradesData);
+      if (healthgradesData) {
+        results.push(healthgradesData);
+        console.info("[Provider Search] ✓ Healthgrades result found");
+      } else {
+        console.warn("[Provider Search] ✗ Healthgrades - no result");
+      }
     } catch (err) {
       console.warn("[Provider Search] Healthgrades search failed:", err.message);
     }
 
     // SOURCE 2: Vitals
     try {
+      console.info("[Provider Search] Attempting Vitals search...");
       const vitalsData = await scrapeVitals(provider);
-      if (vitalsData) results.push(vitalsData);
+      if (vitalsData) {
+        results.push(vitalsData);
+        console.info("[Provider Search] ✓ Vitals result found");
+      } else {
+        console.warn("[Provider Search] ✗ Vitals - no result");
+      }
     } catch (err) {
       console.warn("[Provider Search] Vitals search failed:", err.message);
     }
 
     // SOURCE 3: WebMD
     try {
+      console.info("[Provider Search] Attempting WebMD search...");
       const webmdData = await scrapeWebMD(provider);
-      if (webmdData) results.push(webmdData);
+      if (webmdData) {
+        results.push(webmdData);
+        console.info("[Provider Search] ✓ WebMD result found");
+      } else {
+        console.warn("[Provider Search] ✗ WebMD - no result");
+      }
     } catch (err) {
       console.warn("[Provider Search] WebMD search failed:", err.message);
     }
 
     // SOURCE 4: Doximity
     try {
+      console.info("[Provider Search] Attempting Doximity search...");
       const doximityData = await scrapeDoximity(provider);
-      if (doximityData) results.push(doximityData);
+      if (doximityData) {
+        results.push(doximityData);
+        console.info("[Provider Search] ✓ Doximity result found");
+      } else {
+        console.warn("[Provider Search] ✗ Doximity - no result");
+      }
     } catch (err) {
       console.warn("[Provider Search] Doximity search failed:", err.message);
     }
 
+    console.info(`[Provider Search] Total results found: ${results.length}`);
+    console.info("[Provider Search] ========== Search Complete ==========\n");
+    
     return results.length > 0 ? results : null;
   } catch (err) {
-    console.error("[Provider Search] Error:", err.message);
+    console.error("[Provider Search] Fatal error:", err.message);
     return null;
   }
 }

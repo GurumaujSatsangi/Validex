@@ -130,6 +130,64 @@ export async function informationEnrichmentNode(state) {
     externalResults.npi = npiResult.value;
     if (npiResult.value.success) {
       validationSources.push({ source: "NPI_API", success: true, timestamp: new Date().toISOString() });
+      
+      // ===== UPDATE PROVIDER RECORD WITH NPI DATA =====
+      const npiData = npiResult.value.data;
+      if (npiData && npiData.isFound) {
+        const updates = {};
+
+        // Update phone if provider doesn't have one
+        if (npiData.phone && !input.phone) {
+          updates.phone = npiData.phone;
+          normalizedData.phone = npiData.phone;
+          console.info("[InfoEnrichment] Updating provider phone from NPI:", npiData.phone);
+        }
+
+        // Update license if provider doesn't have one
+        if (npiData.license && !input.license_number) {
+          updates.license_number = npiData.license;
+          normalizedData.license_number = npiData.license;
+          console.info("[InfoEnrichment] Updating provider license from NPI:", npiData.license);
+        }
+
+        // Update specialty if provider doesn't have one
+        if (npiData.speciality && !input.speciality) {
+          updates.speciality = npiData.speciality;
+          normalizedData.speciality = npiData.speciality;
+          console.info("[InfoEnrichment] Updating provider specialty from NPI:", npiData.speciality);
+        }
+
+        // Update address from NPI if provider doesn't have one
+        if (npiData.address && (!input.address || input.address === 'N/A')) {
+          if (npiData.address.address_1) updates.address = npiData.address.address_1;
+          if (npiData.address.city) updates.city = npiData.address.city;
+          if (npiData.address.state) updates.state = npiData.address.state;
+          if (npiData.address.postal_code) updates.zip = npiData.address.postal_code;
+          normalizedData.address = npiData.address.address_1 || normalizedData.address;
+          normalizedData.city = npiData.address.city || normalizedData.city;
+          normalizedData.state = npiData.address.state || normalizedData.state;
+          normalizedData.zip = npiData.address.postal_code || normalizedData.zip;
+          console.info("[InfoEnrichment] Updating provider address from NPI:", JSON.stringify(npiData.address));
+        }
+
+        // Persist updates to database
+        if (Object.keys(updates).length > 0) {
+          try {
+            const { error: updateErr } = await supabase
+              .from("providers")
+              .update(updates)
+              .eq("id", state.providerId);
+
+            if (updateErr) {
+              console.warn("[InfoEnrichment] Failed to update provider from NPI data:", updateErr.message);
+            } else {
+              console.info("[InfoEnrichment] ✓ Provider updated with NPI data:", Object.keys(updates).join(', '));
+            }
+          } catch (dbErr) {
+            console.error("[InfoEnrichment] Error updating provider from NPI data:", dbErr.message);
+          }
+        }
+      }
     } else {
       validationSources.push({ source: "NPI_API", success: false, error: npiResult.value.error });
     }

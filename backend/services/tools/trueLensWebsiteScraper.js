@@ -1,12 +1,16 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { normalizeProviderNameForSearch } from './nameNormalization.js';
 
 /**
  * Scrape provider data from TrueLens appointment availability website
  */
 export async function scrapeTrueLensWebsite(providerName) {
   try {
+    // Normalize provider name for better matching
+    const normalizedName = normalizeProviderNameForSearch(providerName);
     console.log(`[TrueLens Website] Scraping data for: ${providerName}`);
+    console.log(`[TrueLens Website] Normalized search name: ${normalizedName}`);
     
     const url = 'https://truelens-appointment-availability.netlify.app/';
     
@@ -84,7 +88,7 @@ export async function scrapeTrueLensWebsite(providerName) {
     console.log(`[TrueLens Website] Found ${providers.length} providers`);
     
     // Search for matching provider by name (fuzzy match with strict requirements)
-    const normalizedSearchName = providerName.toLowerCase().trim();
+    const normalizedSearchName = normalizedName.toLowerCase().trim();
     
     // Try exact match first
     let matchedProvider = providers.find(p => 
@@ -136,7 +140,7 @@ export async function scrapeTrueLensWebsite(providerName) {
       return { isFound: true, data: matchedProvider };
     }
     
-    console.log(`[TrueLens Website] ✗ No match found for: ${providerName}`);
+    console.log(`[TrueLens Website] ✗ No match found for: ${providerName} (normalized: ${normalizedName})`);
     return { isFound: false };
   } catch (error) {
     console.error('[TrueLens Website] Error:', error.message);
