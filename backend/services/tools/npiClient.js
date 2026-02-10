@@ -103,28 +103,20 @@ export async function getNpiDataByNpiId(npiId) {
 
 /**
  * Search NPI registry by provider name and optional location
- * Uses multiple search strategies for robustness:
- * 1. First name + last name (last part only)
- * 2. First name + full last name (all parts after first)
- * 3. Without city filter (broader search)
- * 4. Without any location filter
+ * All strategies run in PARALLEL. First successful result wins; the rest are discarded.
  * @param {Object} provider - Provider object with name, city, state
  * @returns {Promise<Object|null>} NPI data or null if not found
  */
 export async function searchNpiByName(provider) {
   try {
-    // Normalize name - remove credentials and punctuation
     const name = normalizeProviderName(provider.name);
     if (!name) return null;
 
     const nameParts = name.split(/\s+/);
-    
-    // Try to detect organization vs individual
     const orgKeywords = ['LLC', 'PC', 'INC', 'LTD', 'PLLC', 'PA'];
     const lastPart = nameParts[nameParts.length - 1]?.toUpperCase();
     const isOrganization = orgKeywords.some(kw => lastPart?.includes(kw)) || nameParts.length > 4;
 
-    // Build multiple search strategies to try in order
     const strategies = [];
 
     if (isOrganization) {
@@ -132,56 +124,96 @@ export async function searchNpiByName(provider) {
       strategies.push({ organization_name: name, state: provider.state, label: "org+state" });
       strategies.push({ organization_name: name, label: "org-only" });
     } else if (nameParts.length >= 2) {
-      // Strategy 1: first name + last word as last name (with location)
       strategies.push({ first_name: nameParts[0], last_name: nameParts[nameParts.length - 1], city: provider.city, state: provider.state, label: "first+last+city+state" });
-      // Strategy 2: first name + all remaining as last name (with location)
       strategies.push({ first_name: nameParts[0], last_name: nameParts.slice(1).join(" "), city: provider.city, state: provider.state, label: "first+fullLast+city+state" });
-      // Strategy 3: first + last name (state only, no city)
       strategies.push({ first_name: nameParts[0], last_name: nameParts[nameParts.length - 1], state: provider.state, label: "first+last+state" });
-      // Strategy 4: first + full last (state only)
       strategies.push({ first_name: nameParts[0], last_name: nameParts.slice(1).join(" "), state: provider.state, label: "first+fullLast+state" });
-      // Strategy 5: first + last name only (no location)
       strategies.push({ first_name: nameParts[0], last_name: nameParts[nameParts.length - 1], label: "first+last-noLocation" });
-      // Strategy 6: Wildcard - use * for first name with last name + state
       strategies.push({ first_name: nameParts[0].substring(0, 2) + "*", last_name: nameParts[nameParts.length - 1], state: provider.state, label: "wildcard+last+state" });
     } else {
       strategies.push({ last_name: name, state: provider.state, label: "lastOnly+state" });
       strategies.push({ last_name: name, label: "lastOnly" });
     }
 
-    for (const strategy of strategies) {
-      try {
-        const params = { version: API_VERSION, limit: 5 };
-        if (strategy.first_name) params.first_name = strategy.first_name;
-        if (strategy.last_name) params.last_name = strategy.last_name;
-        if (strategy.organization_name) params.organization_name = strategy.organization_name;
-        if (strategy.city) params.city = strategy.city;
-        if (strategy.state) params.state = strategy.state;
+    console.info(`[NPI Search] Launching ${strategies.length} strategies in PARALLEL for "${name}"...`);
 
-        console.info(`[NPI Search] Trying strategy: ${strategy.label} | Params:`, JSON.stringify(params));
+    // Use AbortController so that once one strategy wins, th rest are cancelled
+    const controller = new AbortController();
+    const { signal } = controller;
 
-        const response = await axios.get(NPI_REGISTRY_BASE_URL, { params, timeout: 8000 });
-        const results = response.data?.results;
+    const raceResult = await raceForFirstResult(
+      strategies.map(strategy => async () => {
+        if (signal.aborted) return null;
+        try {
+          const params = { version: API_VERSION, limit: 5 };
+          if (strategy.first_name) params.first_name = strategy.first_name;
+          if (strategy.last_name) params.last_name = strategy.last_name;
+          if (strategy.organization_name) params.organization_name = strategy.organization_name;
+          if (strategy.city) params.city = strategy.city;
+          if (strategy.state) params.state = strategy.state;
 
-        if (results && results.length > 0) {
-          // Score results to find best match
-          const bestEntry = findBestNpiMatch(results, name, provider.state);
-          if (bestEntry) {
-            console.info(`[NPI Search] ✓ Found via strategy "${strategy.label}": NPI ${bestEntry.number}`);
-            return formatNpiResult(bestEntry);
+          console.info(`[NPI Search] → strategy "${strategy.label}"`);
+          const response = await axios.get(NPI_REGISTRY_BASE_URL, { params, timeout: 8000, signal });
+          const results = response.data?.results;
+
+          if (results && results.length > 0) {
+            const bestEntry = findBestNpiMatch(results, name, provider.state);
+            if (bestEntry) {
+              console.info(`[NPI Search] ✓ Hit via "${strategy.label}": NPI ${bestEntry.number}`);
+              return formatNpiResult(bestEntry);
+            }
           }
+        } catch (err) {
+          if (err.name === 'CanceledError' || signal.aborted) return null;
+          // Silently ignore per-strategy errors
         }
-      } catch (err) {
-        console.warn(`[NPI Search] Strategy "${strategy.label}" failed:`, err.message);
-      }
-    }
+        return null;
+      }),
+      controller
+    );
 
-    console.warn(`[NPI Search] All ${strategies.length} strategies exhausted, no match found for "${name}"`);
+    if (raceResult) return raceResult;
+
+    console.warn(`[NPI Search] All ${strategies.length} strategies exhausted, no match for "${name}"`);
     return { isFound: false, npi: null, name: null, phone: null, speciality: null, address: null, license: null, raw: null };
   } catch (err) {
     console.error("NPI search by name failed for provider", provider.id, err.message);
     return null;
   }
+}
+
+/**
+ * Run an array of async factory functions in parallel.
+ * Returns the first non-null result and aborts the rest.
+ * @param {Array<Function>} taskFactories - Array of () => Promise<T|null>
+ * @param {AbortController} controller - shared abort controller
+ * @returns {Promise<T|null>}
+ */
+async function raceForFirstResult(taskFactories, controller) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let pending = taskFactories.length;
+
+    if (pending === 0) { resolve(null); return; }
+
+    taskFactories.forEach(fn => {
+      fn().then(result => {
+        if (settled) return;
+        if (result) {
+          settled = true;
+          controller.abort();
+          resolve(result);
+        } else {
+          pending--;
+          if (pending === 0 && !settled) { settled = true; resolve(null); }
+        }
+      }).catch(() => {
+        if (settled) return;
+        pending--;
+        if (pending === 0 && !settled) { settled = true; resolve(null); }
+      });
+    });
+  });
 }
 
 /**
@@ -370,19 +402,13 @@ function formatPhoneNumber(phone) {
 }
 
 /**
- * Search NPI on external databases via web scraping + search engines
- * Called when standard NPI API search fails or returns no results.
+ * Search NPI on external databases via web scraping + search engines.
+ * All sources run in PARALLEL. First verified result wins, rest are cancelled.
  * 
- * Search order:
- *   1. npidb.org (direct)
- *   2. providerwire.com (direct)
- *   3. npino.com (direct)
- *   4. nppeslookup.org (direct)
- *   5. hipaaspace.com (direct)
- *   6. DuckDuckGo search (scrapes NPI from results)
- *   7. Bing search (scrapes NPI from results)
- *   8. Google search (scrapes NPI from results)
- *   9. Verify found NPI via official API
+ * Parallel batch 1 (direct NPI sites):
+ *   npidb.org, providerwire.com, npino.com, nppeslookup.org, hipaaspace.com
+ * Parallel batch 2 (search engines — only runs if batch 1 found nothing):
+ *   DuckDuckGo, Bing, Google + "name NPI" strategy
  * 
  * @param {Object} provider - Provider object with name, city, state
  * @returns {Promise<Object|null>} NPI data found or null if not found
@@ -395,7 +421,7 @@ export async function searchNpiOnlineDatabase(provider) {
 
     if (!name) return null;
 
-    console.info("\n[NPI Online] ========== Starting Comprehensive NPI Web Search ==========");
+    console.info("\n[NPI Online] ========== Starting Parallel NPI Web Search ==========");
     console.info("[NPI Online] Provider:", name, "| City:", city, "| State:", state);
 
     const USER_AGENTS = [
@@ -416,89 +442,124 @@ export async function searchNpiOnlineDatabase(provider) {
       ...(referer ? { 'Referer': referer } : {}),
     });
 
-    // ====== SOURCE 1: npidb.org ======
-    let result = await searchNpiSource({
-      name: "npidb.org",
-      getUrl: () => `https://npidb.org/doctors/${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}/`,
-      altUrls: [
-        `https://npidb.org/npi/${encodeURIComponent(name)}`,
-        `https://npidb.org/search/?query=${encodeURIComponent(name + (state ? ' ' + state : ''))}`,
-      ],
-      headers: commonHeaders('https://npidb.org/'),
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
+    // ====== BATCH 1: Direct NPI sites (all in parallel) ======
+    console.info("[NPI Online] Batch 1: Launching 5 direct NPI sites in parallel...");
+    const controller1 = new AbortController();
 
-    // ====== SOURCE 2: providerwire.com ======
-    result = await searchNpiSource({
-      name: "providerwire.com",
-      getUrl: () => `https://providerwire.com/search?name=${encodeURIComponent(name)}${state ? `&state=${state}` : ''}`,
-      altUrls: [],
-      headers: commonHeaders('https://providerwire.com/'),
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
+    const batch1Tasks = [
+      // npidb.org
+      () => searchNpiSource({
+        name: "npidb.org",
+        urls: [
+          `https://npidb.org/doctors/${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}/`,
+          `https://npidb.org/npi/${encodeURIComponent(name)}`,
+          `https://npidb.org/search/?query=${encodeURIComponent(name + (state ? ' ' + state : ''))}`,
+        ],
+        headers: commonHeaders('https://npidb.org/'),
+        signal: controller1.signal,
+      }),
+      // providerwire.com
+      () => searchNpiSource({
+        name: "providerwire.com",
+        urls: [`https://providerwire.com/search?name=${encodeURIComponent(name)}${state ? `&state=${state}` : ''}`],
+        headers: commonHeaders('https://providerwire.com/'),
+        signal: controller1.signal,
+      }),
+      // npino.com
+      () => searchNpiSource({
+        name: "npino.com",
+        urls: [
+          `https://npino.com/search/?q=${encodeURIComponent(name)}${state ? '+' + state : ''}`,
+          `https://npino.com/npi/${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}/`,
+        ],
+        headers: commonHeaders('https://npino.com/'),
+        signal: controller1.signal,
+      }),
+      // nppeslookup.org
+      () => searchNpiSource({
+        name: "nppeslookup.org",
+        urls: [`https://nppeslookup.org/search?name=${encodeURIComponent(name)}${state ? `&state=${state}` : ''}`],
+        headers: commonHeaders('https://nppeslookup.org/'),
+        signal: controller1.signal,
+      }),
+      // hipaaspace.com
+      () => searchNpiSource({
+        name: "hipaaspace.com",
+        urls: [`https://www.hipaaspace.com/medical_billing/coding/npi/${encodeURIComponent(name)}`],
+        headers: commonHeaders('https://www.hipaaspace.com/'),
+        signal: controller1.signal,
+      }),
+    ];
 
-    // ====== SOURCE 3: npino.com ======
-    result = await searchNpiSource({
-      name: "npino.com",
-      getUrl: () => `https://npino.com/search/?q=${encodeURIComponent(name)}${state ? '+' + state : ''}`,
-      altUrls: [
-        `https://npino.com/npi/${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}/`,
-      ],
-      headers: commonHeaders('https://npino.com/'),
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
+    const batch1Result = await raceForFirstResult(batch1Tasks, controller1);
+    if (batch1Result) {
+      const verified = await verifyAndEnrichNpi(batch1Result, name);
+      if (verified) return verified;
+    }
 
-    // ====== SOURCE 4: nppeslookup.org ======
-    result = await searchNpiSource({
-      name: "nppeslookup.org",
-      getUrl: () => `https://nppeslookup.org/search?name=${encodeURIComponent(name)}${state ? `&state=${state}` : ''}`,
-      altUrls: [],
-      headers: commonHeaders('https://nppeslookup.org/'),
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
+    // ====== BATCH 2: Search engines (all in parallel) ======
+    // Includes the "name + NPI" strategy (e.g. "MAUREEN OSULLIVAN ADT NPI")
+    console.info("[NPI Online] Batch 1 found nothing. Batch 2: Launching search engines in parallel...");
 
-    // ====== SOURCE 5: hipaaspace.com ======
-    result = await searchNpiSource({
-      name: "hipaaspace.com",
-      getUrl: () => `https://www.hipaaspace.com/medical_billing/coding/npi/${encodeURIComponent(name)}`,
-      altUrls: [],
-      headers: commonHeaders('https://www.hipaaspace.com/'),
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
+    // Build the "name + credentials + NPI" query from the RAW provider name (keeps credentials)
+    const rawNameForNpiSearch = (provider.name || "")
+      .replace(/[().,]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
 
-    // ====== SOURCE 6: DuckDuckGo Search (most permissive) ======
-    result = await searchNpiViaSearchEngine({
-      engineName: "DuckDuckGo",
-      searchUrl: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`"${name}" ${state} NPI number site:npidb.org OR site:npino.com OR site:nppeslookup.org`)}`,
-      headers: {
-        ...commonHeaders('https://duckduckgo.com/'),
-      },
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
+    const controller2 = new AbortController();
 
-    // ====== SOURCE 7: Bing Search ======
-    result = await searchNpiViaSearchEngine({
-      engineName: "Bing",
-      searchUrl: `https://www.bing.com/search?q=${encodeURIComponent(`"${name}" ${state} NPI number provider`)}`,
-      headers: commonHeaders('https://www.bing.com/'),
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
+    const batch2Tasks = [
+      // DuckDuckGo - name + NPI (like the Google screenshot)
+      () => searchNpiViaSearchEngine({
+        engineName: "DuckDuckGo (name+NPI)",
+        searchUrl: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`${rawNameForNpiSearch} NPI`)}`,
+        headers: commonHeaders('https://duckduckgo.com/'),
+        signal: controller2.signal,
+      }),
+      // DuckDuckGo - site-restricted
+      () => searchNpiViaSearchEngine({
+        engineName: "DuckDuckGo (sites)",
+        searchUrl: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`"${name}" ${state} NPI site:npidb.org OR site:npino.com`)}`,
+        headers: commonHeaders('https://duckduckgo.com/'),
+        signal: controller2.signal,
+      }),
+      // Bing - name + NPI
+      () => searchNpiViaSearchEngine({
+        engineName: "Bing (name+NPI)",
+        searchUrl: `https://www.bing.com/search?q=${encodeURIComponent(`${rawNameForNpiSearch} NPI`)}`,
+        headers: commonHeaders('https://www.bing.com/'),
+        signal: controller2.signal,
+      }),
+      // Google - name + NPI (matches screenshot: "MAUREEN OSULLIVAN ADT NPI")
+      () => searchNpiViaSearchEngine({
+        engineName: "Google (name+NPI)",
+        searchUrl: `https://www.google.com/search?q=${encodeURIComponent(`${rawNameForNpiSearch} NPI`)}`,
+        headers: commonHeaders('https://www.google.com/'),
+        signal: controller2.signal,
+      }),
+      // Bing - with state and quotes
+      () => searchNpiViaSearchEngine({
+        engineName: "Bing (quoted)",
+        searchUrl: `https://www.bing.com/search?q=${encodeURIComponent(`"${name}" ${state} NPI number provider`)}`,
+        headers: commonHeaders('https://www.bing.com/'),
+        signal: controller2.signal,
+      }),
+      // Google - with state and quotes
+      () => searchNpiViaSearchEngine({
+        engineName: "Google (quoted)",
+        searchUrl: `https://www.google.com/search?q=${encodeURIComponent(`"${name}" ${state} NPI number provider`)}`,
+        headers: commonHeaders('https://www.google.com/'),
+        signal: controller2.signal,
+      }),
+    ];
 
-    // ====== SOURCE 8: Google Search ======
-    result = await searchNpiViaSearchEngine({
-      engineName: "Google",
-      searchUrl: `https://www.google.com/search?q=${encodeURIComponent(`"${name}" ${state} NPI number provider`)}`,
-      headers: commonHeaders('https://www.google.com/'),
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
-
-    // ====== SOURCE 9: Try broader DuckDuckGo search without site restriction ======
-    result = await searchNpiViaSearchEngine({
-      engineName: "DuckDuckGo (broad)",
-      searchUrl: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`${name} ${state} NPI 10 digit provider number`)}`,
-      headers: commonHeaders('https://duckduckgo.com/'),
-    });
-    if (result) return await verifyAndEnrichNpi(result, name);
+    const batch2Result = await raceForFirstResult(batch2Tasks, controller2);
+    if (batch2Result) {
+      const verified = await verifyAndEnrichNpi(batch2Result, name);
+      if (verified) return verified;
+    }
 
     console.warn("[NPI Online] All sources exhausted. No NPI found.");
     console.info("[NPI Online] ========== NPI Web Search Complete (NOT FOUND) ==========\n");
@@ -510,44 +571,36 @@ export async function searchNpiOnlineDatabase(provider) {
 }
 
 /**
- * Generic NPI source scraper - tries primary URL then alternates
+ * Generic NPI source scraper - tries URLs sequentially for a single source
  */
-async function searchNpiSource({ name, getUrl, altUrls = [], headers }) {
-  const urls = [getUrl(), ...altUrls];
-  
+async function searchNpiSource({ name, urls = [], headers, signal }) {
   for (const url of urls) {
+    if (signal?.aborted) return null;
     try {
-      console.info(`[NPI Online] Trying ${name}: ${url}`);
+      console.info(`[NPI Online] → ${name}: ${url.substring(0, 100)}`);
       
       const response = await axios.get(url, {
         headers,
-        timeout: 10000,
+        timeout: 8000,
         maxRedirects: 5,
+        signal,
         validateStatus: (status) => status < 500,
       });
 
       if (response.status === 403 || response.status === 429) {
-        console.warn(`[NPI Online] ${name} returned ${response.status} (blocked/rate-limited)`);
+        console.warn(`[NPI Online] ${name}: ${response.status} (blocked)`);
         continue;
       }
-
-      if (response.status !== 200) {
-        console.warn(`[NPI Online] ${name} returned status ${response.status}`);
-        continue;
-      }
+      if (response.status !== 200) continue;
 
       const npiNumbers = extractNpiFromHtml(response.data, name);
       if (npiNumbers.length > 0) {
-        console.info(`[NPI Online] ✓ Found ${npiNumbers.length} NPI(s) on ${name}: ${npiNumbers.slice(0, 3).join(', ')}`);
-        return {
-          npi: npiNumbers[0],
-          source: name,
-        };
-      } else {
-        console.info(`[NPI Online] ✗ ${name} - no NPI numbers found in response`);
+        console.info(`[NPI Online] ✓ ${name}: found NPI ${npiNumbers[0]}`);
+        return { npi: npiNumbers[0], source: name };
       }
     } catch (err) {
-      console.warn(`[NPI Online] ${name} search failed (${url}):`, err.message);
+      if (err.name === 'CanceledError' || signal?.aborted) return null;
+      console.warn(`[NPI Online] ${name} failed:`, err.message);
     }
   }
   return null;
@@ -556,48 +609,58 @@ async function searchNpiSource({ name, getUrl, altUrls = [], headers }) {
 /**
  * Search for NPI via search engine results scraping
  */
-async function searchNpiViaSearchEngine({ engineName, searchUrl, headers }) {
+async function searchNpiViaSearchEngine({ engineName, searchUrl, headers, signal }) {
+  if (signal?.aborted) return null;
   try {
-    console.info(`[NPI Online] Trying ${engineName} search...`);
+    console.info(`[NPI Online] → ${engineName}: searching...`);
     
     const response = await axios.get(searchUrl, {
       headers,
-      timeout: 12000,
+      timeout: 10000,
       maxRedirects: 5,
+      signal,
       validateStatus: (status) => status < 500,
     });
 
     if (response.status !== 200) {
-      console.warn(`[NPI Online] ${engineName} returned status ${response.status}`);
+      console.warn(`[NPI Online] ${engineName}: status ${response.status}`);
       return null;
     }
 
-    // Extract NPI numbers from search results page
+    // Extract labeled NPI numbers first
     const npiNumbers = extractNpiFromHtml(response.data, engineName);
-    
     if (npiNumbers.length > 0) {
-      console.info(`[NPI Online] ✓ Found NPI via ${engineName}: ${npiNumbers[0]}`);
-      return {
-        npi: npiNumbers[0],
-        source: engineName,
-      };
+      console.info(`[NPI Online] ✓ ${engineName}: found NPI ${npiNumbers[0]}`);
+      return { npi: npiNumbers[0], source: engineName };
     }
 
-    // Also try to extract NPI from URLs in search results (e.g., npidb.org/npi/1234567890)
+    // Extract NPI from URLs (e.g. npidb.org/npi/1234567890)
     const urlNpiPattern = /npi[\/=](\d{10})/gi;
     let urlMatch;
     while ((urlMatch = urlNpiPattern.exec(response.data)) !== null) {
       const candidateNpi = urlMatch[1];
       if (isValidNpiChecksum(candidateNpi)) {
-        console.info(`[NPI Online] ✓ Found NPI in URL via ${engineName}: ${candidateNpi}`);
+        console.info(`[NPI Online] ✓ ${engineName}: found NPI in URL ${candidateNpi}`);
         return { npi: candidateNpi, source: engineName };
       }
     }
 
-    console.info(`[NPI Online] ✗ ${engineName} - no NPI found`);
+    // Extract NPI from search snippet text (e.g. "NPI 1619435682" or "NPI #1619435682")
+    const snippetPattern = /NPI\s*#?\s*(\d{10})/gi;
+    let snippetMatch;
+    while ((snippetMatch = snippetPattern.exec(response.data)) !== null) {
+      const candidateNpi = snippetMatch[1];
+      if (isValidNpiChecksum(candidateNpi)) {
+        console.info(`[NPI Online] ✓ ${engineName}: found NPI in snippet ${candidateNpi}`);
+        return { npi: candidateNpi, source: engineName };
+      }
+    }
+
+    console.info(`[NPI Online] ✗ ${engineName}: no NPI found`);
     return null;
   } catch (err) {
-    console.warn(`[NPI Online] ${engineName} search failed:`, err.message);
+    if (err.name === 'CanceledError' || signal?.aborted) return null;
+    console.warn(`[NPI Online] ${engineName} failed:`, err.message);
     return null;
   }
 }
