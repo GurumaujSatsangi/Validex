@@ -1,5 +1,6 @@
 import express from "express";
 import { supabase } from "../supabaseClient.js";
+import { addCronJob, removeCronJob } from "../services/cronScheduler.js";
 
 const router = express.Router();
 
@@ -38,10 +39,16 @@ router.post("/", async (req, res) => {
       return res.status(500).json({ error: "Failed to schedule cron job" });
     }
 
+    const newJob = data[0];
+    console.log(`[Cron Jobs] Created cron job ${newJob.id}`);
+
+    // Schedule the new job immediately
+    addCronJob(newJob);
+
     res.status(201).json({ 
       success: true, 
       message: "Cron job scheduled successfully",
-      data: data[0]
+      data: newJob
     });
   } catch (err) {
     console.error("[Cron Jobs] Error creating cron job", err);
@@ -202,6 +209,10 @@ router.delete("/:id", async (req, res) => {
       console.error("[Cron Jobs] Failed to delete cron job", error.message || error);
       return res.status(500).json({ error: "Failed to delete cron job" });
     }
+
+    // Remove from scheduler
+    removeCronJob(id);
+    console.log(`[Cron Jobs] Deleted cron job ${id}`);
 
     res.status(200).json({ 
       success: true, 

@@ -16,6 +16,7 @@ import exportRoutes from "./routes/export.js";
 import cronJobRoutes from "./routes/cron-jobs.js";
 import { sendRunCompletionEmail } from "./services/agents/emailGenerationAgent.js";
 import { supabase } from "./supabaseClient.js";
+import { initializeCronJobs, stopAllCronJobs } from "./services/cronScheduler.js";
 
 dotenv.config();
 
@@ -146,11 +147,18 @@ export async function startServer({ port = process.env.PORT || 5000, host = "0.0
     });
   });
 
+  // Initialize cron jobs after server starts
+  await initializeCronJobs();
+
   return { app, server };
 }
 
 export async function stopServer(server) {
   if (!server) return;
+  
+  // Stop all cron jobs
+  stopAllCronJobs();
+  
   await new Promise((resolve) => {
     server.close(() => {
       console.log("[Shutdown] Server stopped");
