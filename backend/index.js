@@ -47,6 +47,12 @@ export function createServer() {
     });
   });
 
+  app.get("/cron-job",async(req,res)=>{
+
+    const {data,error} = await supabase.from("cron_jobs").select("*");
+    res.render("cron-jobs.ejs",{crons:data});
+})
+
   app.get("/", (req, res) => res.render("index"));
   app.get("/upload", (req, res) => res.render("upload"));
   app.get("/add-provider", (req, res) => res.render("add-provider-by-npi"));
