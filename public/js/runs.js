@@ -58,6 +58,11 @@ async function loadRuns(){
 
 let isStartingRun = false;
 
+// Handle clicking the Schedule Cron Job button
+document.getElementById('cronjob')?.addEventListener('click', () => {
+  window.location.href = '/cron-jobs';
+});
+
 document.getElementById('startRun')?.addEventListener('click', async () => {
   if (isStartingRun) return; // prevent accidental double triggers
   try {

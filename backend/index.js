@@ -13,6 +13,7 @@ import providerRoutes from "./routes/providers.js";
 import validationRunRoutes from "./routes/validationRuns.js";
 import issueRoutes from "./routes/issues.js";
 import exportRoutes from "./routes/export.js";
+import cronJobRoutes from "./routes/cron-jobs.js";
 import { sendRunCompletionEmail } from "./services/agents/emailGenerationAgent.js";
 import { supabase } from "./supabaseClient.js";
 
@@ -39,6 +40,7 @@ export function createServer() {
   app.use("/api/validation-runs", validationRunRoutes);
   app.use("/api/issues", issueRoutes);
   app.use("/api/directory", exportRoutes);
+  app.use("/api/cron-jobs", cronJobRoutes);
 
   app.get("/health", (req, res) => {
     res.status(200).json({
@@ -47,11 +49,27 @@ export function createServer() {
     });
   });
 
-  app.get("/cron-job",async(req,res)=>{
+  app.get("/cron-job", (req, res) => {
+    res.redirect(301, "/cron-jobs");
+  });
 
-    const {data,error} = await supabase.from("cron_jobs").select("*");
-    res.render("cron-jobs.ejs",{crons:data});
-})
+  app.get("/cron-jobs", async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("cron_jobs")
+        .select("*");
+
+      if (error) {
+        console.error("[Cron Jobs] Failed to load cron jobs", error.message || error);
+        return res.render("cron-jobs", { crons: [], error: "Failed to load cron jobs." });
+      }
+
+      res.render("cron-jobs", { crons: data ?? [], error: null });
+    } catch (err) {
+      console.error("[Cron Jobs] Error fetching cron jobs", err);
+      res.render("cron-jobs", { crons: [], error: "Failed to load cron jobs." });
+    }
+  });
 
   app.get("/", (req, res) => res.render("index"));
   app.get("/upload", (req, res) => res.render("upload"));
