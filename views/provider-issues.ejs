@@ -6,6 +6,100 @@
   <title>Provider Data Issues - Validex</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="/css/styles.css" rel="stylesheet">
+  <style>
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 2px solid #e0e0e0;
+      transition: all 0.2s ease;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    .radio-option:hover {
+      border-color: #aaa;
+    }
+    .radio-option input[type="radio"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #ccc;
+      border-radius: 50%;
+      outline: none;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+    .radio-option input[type="radio"]:checked {
+      border-width: 5px;
+    }
+    .radio-option.accept-option input[type="radio"]:checked {
+      border-color: #198754;
+    }
+    .radio-option.accept-option:has(input:checked) {
+      border-color: #198754;
+      background-color: #f0fdf4;
+      color: #198754;
+    }
+    .radio-option.reject-option input[type="radio"]:checked {
+      border-color: #dc3545;
+    }
+    .radio-option.reject-option:has(input:checked) {
+      border-color: #dc3545;
+      background-color: #fef2f2;
+      color: #dc3545;
+    }
+    .correct-value-input:disabled {
+      background-color: #f3f4f6;
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+    .correct-value-input:enabled {
+      background-color: #fff;
+      border-color: #dc3545 !important;
+      opacity: 1;
+    }
+    .resolve-all-container {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    .btn-resolve-all {
+      background-color: #198754;
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-resolve-all:hover {
+      background-color: #157347;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
+    }
+    .btn-resolve-all:disabled {
+      background-color: #a3d9b1;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+  </style>
 </head>
 <body>
   <div class="dashboard-layout">
@@ -91,6 +185,10 @@
                       <td>
                         <% if (issue.status === "OPEN") { %>
                           <span class="badge" style="background-color: #dc3545; color: #fff; font-weight: 600;"><%= issue.status %></span>
+                        <% } else if (issue.status === "ACCEPTED BY PROVIDER") { %>
+                          <span class="badge" style="background-color: #198754; color: #fff; font-weight: 600;"><%= issue.status %></span>
+                        <% } else if (issue.status === "REJECTED BY PROVIDER") { %>
+                          <span class="badge" style="background-color: #ffc107; color: #333; font-weight: 600;"><%= issue.status %></span>
                         <% } else if (issue.status === "RESOLVED" || issue.status === "ACCEPTED") { %>
                           <span class="badge" style="background-color: #198754; color: #fff; font-weight: 600;"><%= issue.status %></span>
                         <% } else if (issue.status === "REJECTED") { %>
@@ -100,22 +198,31 @@
                         <% } %>
                       </td>
                       <td>
-                        <div style="display: flex; flex-direction: column; gap: 6px;">
-                          <button class="btn btn-sm accept-btn" data-issue-id="<%= issue.id %>" style="background-color: #198754; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">
-                            <i class="bi bi-check-circle"></i> Accept
-                          </button>
-                          <button class="btn btn-sm reject-btn" data-issue-id="<%= issue.id %>" style="background-color: #dc3545; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">
-                            <i class="bi bi-x-circle"></i> Reject
-                          </button>
+                        <div class="radio-group">
+                          <label class="radio-option accept-option">
+                            <input type="radio" name="action-<%= issue.id %>" value="accept" data-issue-id="<%= issue.id %>">
+                            <i class="bi bi-check-circle-fill"></i> Accept
+                          </label>
+                          <label class="radio-option reject-option">
+                            <input type="radio" name="action-<%= issue.id %>" value="reject" data-issue-id="<%= issue.id %>">
+                            <i class="bi bi-x-circle-fill"></i> Reject
+                          </label>
                         </div>
                       </td>
                       <td>
-                        <textarea rows="3" cols="15" class="correct-value-input" data-issue-id="<%= issue.id %>" disabled placeholder="Enter the correct value here (enabled on reject)" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; resize: vertical;"></textarea>
+                        <textarea rows="3" cols="15" class="correct-value-input" data-issue-id="<%= issue.id %>" disabled placeholder="Enabled when rejected" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; resize: vertical;"></textarea>
                       </td>
                     </tr>
                   <% }) %>
                 </tbody>
               </table>
+
+              <!-- Mark All Issues as Resolved -->
+              <div class="resolve-all-container">
+                <button id="resolveAllBtn" class="btn-resolve-all">
+                  <i class="bi bi-check-all"></i> Mark All Issues as Resolved
+                </button>
+              </div>
             <% } else { %>
               <div class="empty-state">
                 <div class="empty-icon">
@@ -142,17 +249,105 @@
     updateTime();
     setInterval(updateTime, 60000);
 
-    // Enable correct value textarea when reject is clicked
-    document.querySelectorAll('.reject-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const issueId = btn.dataset.issueId;
+    // Radio button change: enable/disable correct value textarea
+    document.querySelectorAll('input[type="radio"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        const issueId = radio.dataset.issueId;
         const textarea = document.querySelector(`.correct-value-input[data-issue-id="${issueId}"]`);
-        if (textarea) {
+        if (!textarea) return;
+
+        if (radio.value === 'reject') {
           textarea.disabled = false;
+          textarea.placeholder = 'Enter the correct value here';
           textarea.focus();
-          textarea.placeholder = "Enter the correct value here";
+        } else {
+          textarea.disabled = true;
+          textarea.value = '';
+          textarea.placeholder = 'Enabled when rejected';
         }
       });
+    });
+
+    // Mark All Issues as Resolved
+    document.getElementById('resolveAllBtn')?.addEventListener('click', async () => {
+      // Collect all radio selections
+      const rows = document.querySelectorAll('tbody tr');
+      const actions = [];
+      let allSelected = true;
+
+      rows.forEach(row => {
+        const selected = row.querySelector('input[type="radio"]:checked');
+        if (!selected) {
+          allSelected = false;
+          return;
+        }
+        const issueId = selected.dataset.issueId;
+        const action = selected.value; // 'accept' or 'reject'
+        const textarea = row.querySelector('.correct-value-input');
+        const correctValue = textarea ? textarea.value.trim() : '';
+        actions.push({ issueId, action, correctValue });
+      });
+
+      if (!allSelected) {
+        Swal.fire('Incomplete', 'Please select Accept or Reject for every issue before resolving.', 'warning');
+        return;
+      }
+
+      // Check rejected issues have a correct value
+      const missingValues = actions.filter(a => a.action === 'reject' && !a.correctValue);
+      if (missingValues.length > 0) {
+        Swal.fire('Missing Values', 'Please enter the correct value for all rejected issues.', 'warning');
+        return;
+      }
+
+      const confirmed = await Swal.fire({
+        icon: 'question',
+        title: 'Mark all issues as resolved?',
+        text: `${actions.filter(a => a.action === 'accept').length} accepted, ${actions.filter(a => a.action === 'reject').length} rejected`,
+        showCancelButton: true,
+        confirmButtonText: 'Yes, resolve all',
+        confirmButtonColor: '#198754'
+      });
+
+      if (!confirmed.isConfirmed) return;
+
+      Swal.fire({
+        title: 'Resolving issues...',
+        html: '<div style="font-size:0.9rem;color:#666;">Please wait while we update your records.</div>',
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const { issueId, action, correctValue } of actions) {
+        try {
+          const fetchOptions = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(action === 'reject' ? { correctValue } : {})
+          };
+          const res = await fetch(`/api/issues/${issueId}/${action}`, fetchOptions);
+          if (res.ok) successCount++;
+          else errorCount++;
+        } catch {
+          errorCount++;
+        }
+      }
+
+      Swal.close();
+
+      if (errorCount === 0) {
+        Swal.fire('Success', `All ${successCount} issue(s) resolved successfully!`, 'success').then(() => {
+          window.location.reload();
+        });
+      } else {
+        Swal.fire('Partial Success', `${successCount} resolved, ${errorCount} failed. Please try again.`, 'warning').then(() => {
+          window.location.reload();
+        });
+      }
     });
   </script>
 </body>

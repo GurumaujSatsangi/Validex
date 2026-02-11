@@ -34,7 +34,7 @@ async function load() {
       const normalized = String(fieldName || '').toLowerCase();
       const matches = issues.filter(it => String(it.field_name || '').toLowerCase() === normalized);
       if (matches.length === 0) return null;
-      const accepted = matches.find(it => it.status === 'ACCEPTED');
+      const accepted = matches.find(it => it.status === 'ACCEPTED' || it.status === 'ACCEPTED BY PROVIDER');
       const chosen = accepted || matches[0];
       return chosen.suggested_value ?? null;
     };
@@ -79,9 +79,9 @@ async function load() {
       issuesSummary.style.display = 'grid';
       noIssuesMsg.style.display = 'none';
       const total = issues.length;
-      const accepted = issues.filter(it => it.status === 'ACCEPTED').length;
-      const rejected = issues.filter(it => it.status === 'REJECTED').length;
-      const pending = total - accepted - rejected;
+      const accepted = issues.filter(it => it.status === 'ACCEPTED' || it.status === 'ACCEPTED BY PROVIDER').length;
+      const rejected = issues.filter(it => it.status === 'REJECTED' || it.status === 'REJECTED BY PROVIDER').length;
+      const pending = issues.filter(it => it.status === 'OPEN').length;
 
       issuesSummary.innerHTML = `
         <div class="issue-pill">
@@ -126,7 +126,7 @@ async function load() {
           </thead>
           <tbody>
             ${issues.map(it => {
-              const statusBadgeClass = it.status === 'ACCEPTED' ? 'badge-success' : it.status === 'REJECTED' ? 'badge' : 'badge-warning';
+              const statusBadgeClass = (it.status === 'ACCEPTED' || it.status === 'ACCEPTED BY PROVIDER') ? 'badge-success' : (it.status === 'REJECTED' || it.status === 'REJECTED BY PROVIDER') ? 'badge' : it.status === 'OPEN' ? 'badge-warning' : 'badge-warning';
               const severityBadgeClass = it.severity === 'HIGH' ? 'badge-danger' : it.severity === 'MEDIUM' ? 'badge-warning' : 'badge-info';
               const confidencePct = it.confidence ? Math.round(it.confidence * 100) : 0;
               const source = it.source_type || it.source || '-';

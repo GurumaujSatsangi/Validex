@@ -379,7 +379,7 @@ router.post("/:id/accept", async (req, res) => {
 
     const { error: issueUpdateErr } = await supabase
       .from("validation_issues")
-      .update({ status: "ACCEPTED" })
+      .update({ status: "ACCEPTED BY PROVIDER" })
       .eq("id", issue.id);
 
     if (issueUpdateErr) {
@@ -405,22 +405,69 @@ router.post("/:id/accept", async (req, res) => {
 });
 
 router.post("/:id/reject", async (req, res) => {
-  const { data: issue } = await supabase
-    .from("validation_issues")
-    .select("run_id")
-    .eq("id", req.params.id)
-    .single();
+  try {
+    const { correctValue } = req.body || {};
 
-  await supabase
-    .from("validation_issues")
-    .update({ status: "REJECTED" })
-    .eq("id", req.params.id);
+    const { data: issue, error: issueErr } = await supabase
+      .from("validation_issues")
+      .select("*")
+      .eq("id", req.params.id)
+      .single();
 
-  if (issue?.run_id) {
-    await refreshRunNeedsReviewCount(issue.run_id);
+    if (issueErr || !issue) {
+      console.error("[Reject Issue] Issue not found:", issueErr);
+      return res.status(404).json({ error: "Issue not found" });
+    }
+
+    console.log(`[Reject Issue] Rejecting issue ${issue.id}, field: ${issue.field_name}, correctValue: "${correctValue}"`);
+
+    // If provider supplied a correct value, update the provider record
+    if (correctValue !== undefined && correctValue !== null && correctValue !== '') {
+      const normalizedFieldName = normalizeFieldName(issue.field_name);
+      const dbColumn = fieldNameToDbColumn[normalizedFieldName];
+
+      if (dbColumn && VALID_PROVIDER_COLUMNS.has(dbColumn)) {
+        const transformedValue = transformValueForColumn(dbColumn, correctValue);
+        const updateObj = {
+          [dbColumn]: transformedValue,
+          status: "ACTIVE",
+          updated_at: new Date().toISOString()
+        };
+
+        console.log(`[Reject Issue] Updating provider ${issue.provider_id}, column "${dbColumn}" to:`, transformedValue);
+
+        const { error: updateErr } = await supabase
+          .from("providers")
+          .update(updateObj)
+          .eq("id", issue.provider_id);
+
+        if (updateErr) {
+          console.error("[Reject Issue] Failed to update provider:", updateErr);
+          return res.status(500).json({ error: `Failed to update provider: ${updateErr.message}` });
+        }
+
+        console.log(`[Reject Issue] Provider ${issue.provider_id} updated successfully`);
+      } else {
+        console.warn(`[Reject Issue] No valid column mapping for field "${issue.field_name}", skipping provider update`);
+      }
+    }
+
+    // Update issue status to REJECTED BY PROVIDER
+    await supabase
+      .from("validation_issues")
+      .update({ status: "REJECTED BY PROVIDER" })
+      .eq("id", req.params.id);
+
+    if (issue?.run_id) {
+      await refreshRunNeedsReviewCount(issue.run_id);
+    }
+
+    console.log(`[Reject Issue] Issue ${issue.id} rejected by provider`);
+    res.json({ message: "Issue rejected by provider", correctValue: correctValue || null });
+  } catch (err) {
+    console.error("[Reject Issue] Unexpected error:", err);
+    res.status(500).json({ error: `Internal server error: ${err.message}` });
   }
-
-  res.json({ message: "Issue rejected" });
 });
 
 // Bulk accept all open issues for a run
