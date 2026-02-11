@@ -8,46 +8,152 @@
   <link href="/css/styles.css" rel="stylesheet">
 </head>
 <body>
-                <h2>Welcome, <%= providerdata.name %></h2>
-            <h4>We have noticed the following issues in your data and we need your support and assistance in resolving these issues:</h4>
+  <div class="dashboard-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <a href="/" class="sidebar-logo">
+          <i class="bi bi-check-circle-fill"></i>
+          <span>Validex</span>
+        </a>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">Main</div>
+          <a href="/issues/<%= providerdata.id %>" class="nav-item active">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>Open Issues</span>
+          </a>
+        </div>
+      </nav>
+    </aside>
 
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Top Bar -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <div>
+            <div class="topbar-title">Provider Data Issues</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-time">
+            <i class="bi bi-clock"></i> <span id="currentTime"></span>
+          </div>
+        </div>
+      </div>
 
-     <table>
-                <tr>
-                    <td>Field of Issue</td>
-                    <td>Current Value</td>
-                    <td>Suggested Value</td>
-                    <td>Status</td>
-                    <td>Action </td>
-                    <td>Correct Value</td>
-                </tr>
+      <!-- Content Area -->
+      <div class="content-area">
+        <!-- Provider Info Card -->
+        <div class="card" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="bi bi-person-fill"></i>
+              Welcome, <%= providerdata.name %>
+            </div>
+          </div>
+          <div class="card-body">
+            <p style="color: #555; font-size: 0.95rem; margin: 0;">
+              We have noticed the following issues in your data and we need your support and assistance in resolving these issues.
+            </p>
+          </div>
+        </div>
 
-    <% if(issues && issues.length>0) { %>
-        <% issues.forEach(function(issues){ %>
-
-           
-                <tr>
-                    <td><%= issues.field_name %></td>
-                    <td><%= issues.old_value %></td>
-                    <td><%= issues.suggested_value %></td>
-                    <td><%= issues.status %></td>
-                    <td><a href="">Suggested Value is Correct (ACCEPT)</a><br>
-                    <a href="">Suggested Value is NOT Correct (REJECT)</a></td>
-                    <td>
-                        <textarea rows="5" columns="10" disabled placeholder="Enter the Correct Value Here (This Field will be enabled only if you reject the issue)"></textarea>
-                    </td>
-                </tr>
-            </table>
-
-            
-        
-        
-        <% }) %>
-    
-    <% } %>
+        <!-- Issues Table Card -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="bi bi-exclamation-triangle-fill"></i>
+              All Issues
+            </div>
+          </div>
+          <div class="card-body">
+            <% if (issues && issues.length > 0) { %>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Field of Issue</th>
+                    <th>Current Value</th>
+                    <th>Suggested Value</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                    <th>Correct Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% issues.forEach(function(issue) { %>
+                    <tr>
+                      <td><code><%= issue.field_name %></code></td>
+                      <td><%= issue.old_value %></td>
+                      <td><%= issue.suggested_value %></td>
+                      <td>
+                        <% if (issue.status === "OPEN") { %>
+                          <span class="badge" style="background-color: #dc3545; color: #fff; font-weight: 600;"><%= issue.status %></span>
+                        <% } else if (issue.status === "RESOLVED" || issue.status === "ACCEPTED") { %>
+                          <span class="badge" style="background-color: #198754; color: #fff; font-weight: 600;"><%= issue.status %></span>
+                        <% } else if (issue.status === "REJECTED") { %>
+                          <span class="badge" style="background-color: #ffc107; color: #333; font-weight: 600;"><%= issue.status %></span>
+                        <% } else { %>
+                          <span class="badge" style="background-color: #6c757d; color: #fff; font-weight: 600;"><%= issue.status %></span>
+                        <% } %>
+                      </td>
+                      <td>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                          <button class="btn btn-sm accept-btn" data-issue-id="<%= issue.id %>" style="background-color: #198754; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">
+                            <i class="bi bi-check-circle"></i> Accept
+                          </button>
+                          <button class="btn btn-sm reject-btn" data-issue-id="<%= issue.id %>" style="background-color: #dc3545; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">
+                            <i class="bi bi-x-circle"></i> Reject
+                          </button>
+                        </div>
+                      </td>
+                      <td>
+                        <textarea rows="3" cols="15" class="correct-value-input" data-issue-id="<%= issue.id %>" disabled placeholder="Enter the correct value here (enabled on reject)" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; resize: vertical;"></textarea>
+                      </td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            <% } else { %>
+              <div class="empty-state">
+                <div class="empty-icon">
+                  <i class="bi bi-emoji-smile"></i>
+                </div>
+                <div class="empty-title">No open issues!</div>
+                <p style="color: #888;">All your data looks good. No action is needed at this time.</p>
+              </div>
+            <% } %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="/js/runs.js"></script>
- 
+  <script>
+    // Update time
+    function updateTime() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('currentTime').textContent = timeStr;
+    }
+    updateTime();
+    setInterval(updateTime, 60000);
+
+    // Enable correct value textarea when reject is clicked
+    document.querySelectorAll('.reject-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const issueId = btn.dataset.issueId;
+        const textarea = document.querySelector(`.correct-value-input[data-issue-id="${issueId}"]`);
+        if (textarea) {
+          textarea.disabled = false;
+          textarea.focus();
+          textarea.placeholder = "Enter the correct value here";
+        }
+      });
+    });
+  </script>
 </body>
 </html>
