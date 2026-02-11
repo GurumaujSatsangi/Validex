@@ -1,19 +1,20 @@
 async function loadRuns(){
   try {
+    const table = document.getElementById('runsTbl');
+    
+    // If the table element doesn't exist on this page, just reload
+    if (!table) {
+      window.location.reload();
+      return;
+    }
+
     const res = await fetch('/api/validation-runs');
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
     }
     const json = await res.json();
-    const table = document.getElementById('runsTbl');
     const spinner = document.querySelector('#runsList .spinner-border');
-    
-    // Check if required DOM elements exist (defensive check)
-    if (!table) {
-      console.warn('Runs table not found on page, skipping update');
-      return;
-    }
-    
+
     if (!json.runs || json.runs.length === 0) {
       if (spinner) spinner.style.display = 'none';
       table.style.display = 'table';
@@ -412,6 +413,9 @@ document.addEventListener('click', async (ev) => {
               <button class="btn btn-sm btn-danger reject-modal-issue" data-issue-id="${escapeHtml(it.id)}">
                 <i class="bi bi-x-circle"></i>
               </button>
+              <button class="btn btn-sm btn-primary notify-provider-btn" data-issue-id="${escapeHtml(it.id)}" data-provider-name="${providerName}" title="Notify provider via SMS">
+                <i class="bi bi-chat-dots"></i>
+              </button>
               ${npiLink}
             ` : `
               <span class="text-muted">Closed</span>
@@ -610,6 +614,63 @@ document.addEventListener('click', async (ev) => {
 
         // Search and filter functionality
         const searchInput = document.getElementById('issueSearchInput');
+
+        // Notify Provider via Twilio SMS
+        document.querySelectorAll('.notify-provider-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            // Capture button reference immediately — e.currentTarget becomes null after await
+            const notifyBtn = e.currentTarget;
+            const issueId = notifyBtn.dataset.issueId;
+            const providerName = notifyBtn.dataset.providerName;
+            notifyBtn.disabled = true;
+
+            const confirmed = await Swal.fire({
+              icon: 'question',
+              title: 'Notify Provider?',
+              html: `Send an SMS to <strong>${providerName}</strong> asking them to review and resolve this issue?`,
+              showCancelButton: true,
+              confirmButtonText: '<i class="bi bi-chat-dots"></i> Send SMS',
+              confirmButtonColor: '#0d6efd',
+              cancelButtonText: 'Cancel'
+            });
+
+            if (!confirmed.isConfirmed) {
+              notifyBtn.disabled = false;
+              return;
+            }
+
+            Swal.fire({
+              title: 'Sending SMS...',
+              html: '<div class="spinner-border text-primary" role="status"></div><p class="mt-3">Notifying provider via Twilio...</p>',
+              allowOutsideClick: false,
+              showConfirmButton: false
+            });
+
+            try {
+              const res = await fetch(`/api/issues/${issueId}/notify`, { method: 'POST' });
+              const json = await res.json();
+              Swal.close();
+
+              if (!res.ok) {
+                Swal.fire('Failed', json?.error || 'Could not send SMS', 'error');
+                notifyBtn.disabled = false;
+                return;
+              }
+
+              Swal.fire('Sent!', `SMS sent to ${json.providerName} successfully.`, 'success');
+              // Change button to show it was sent
+              notifyBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+              notifyBtn.classList.remove('btn-primary');
+              notifyBtn.classList.add('btn-outline-success');
+              notifyBtn.title = 'Notification sent';
+            } catch (err) {
+              Swal.close();
+              Swal.fire('Error', err.message || String(err), 'error');
+              notifyBtn.disabled = false;
+            }
+          });
+        });
+
         const searchBtn = document.getElementById('issueSearchBtn');
         const clearBtn = document.getElementById('issueClearBtn');
         const filterButtons = Array.from(document.querySelectorAll('.issues-filter-btn'));

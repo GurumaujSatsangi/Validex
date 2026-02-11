@@ -77,7 +77,8 @@
           </div>
           <div class="card-body">
             <% if (typeof runs !== 'undefined' && runs && runs.length) { %>
-              <table>
+              <div id="runsList">
+              <table id="runsTbl">
                 <thead>
                   <tr>
                     <th>Run ID</th>
@@ -141,6 +142,7 @@
                   <% }) %>
                 </tbody>
               </table>
+              </div>
             <% } else { %>
               <div class="empty-state">
                 <div class="empty-icon">

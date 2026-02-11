@@ -1,5 +1,6 @@
 import express from "express";
 import { supabase } from "../supabaseClient.js";
+import twilio from "twilio";
 
 const router = express.Router();
 
@@ -623,6 +624,72 @@ router.post("/run/:runId/reject-all", async (req, res) => {
   await refreshRunNeedsReviewCount(runId);
 
   res.json({ message: "All issues rejected" });
+});
+
+// Notify provider via Twilio SMS
+router.post("/:id/notify", async (req, res) => {
+  try {
+    const { id: issueId } = req.params;
+
+    // Load the issue with provider info
+    const { data: issue, error: issueErr } = await supabase
+      .from("validation_issues")
+      .select("*, providers(id, name, phone)")
+      .eq("id", issueId)
+      .single();
+
+    if (issueErr || !issue) {
+      console.error("[Notify] Issue not found:", issueErr);
+      return res.status(404).json({ error: "Issue not found" });
+    }
+
+    const provider = issue.providers;
+    if (!provider) {
+      return res.status(400).json({ error: "Provider not found for this issue" });
+    }
+
+    const providerName = provider.name || "Provider";
+    const providerId = provider.id;
+    const baseUrl = process.env.RENDER_EXTERNAL_URL || "http://localhost:5000";
+    const issueLink = `${baseUrl}/issues/${providerId}`;
+
+    // Always send to the fixed support number for now
+    const toNumber = "+919875691340";
+
+    const messageBody = `Hello ${providerName}, Greetings from Validex!\nDuring our recent validation, we noticed a few data inconsistencies in your profile.We'd love your support in fixing this. Kindly click on the link given below to view and resolve the issue:\n${issueLink}.\nRegards - Team Validex`;
+
+    // Send via Twilio
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const fromNumber = process.env.TWILIO_NUMBER;
+
+    if (!accountSid || !authToken || !fromNumber) {
+      console.error("[Notify] Twilio credentials not configured");
+      return res.status(500).json({ error: "Twilio credentials not configured" });
+    }
+
+    const client = twilio(accountSid, authToken);
+
+    console.log(`[Notify] Sending SMS to ${toNumber} for provider ${providerName} (${providerId})`);
+
+    const message = await client.messages.create({
+      body: messageBody,
+      from: fromNumber,
+      to: toNumber
+    });
+
+    console.log(`[Notify] SMS sent successfully. SID: ${message.sid}`);
+
+    res.json({
+      success: true,
+      message: `SMS sent to ${toNumber}`,
+      sid: message.sid,
+      providerName
+    });
+  } catch (err) {
+    console.error("[Notify] Error sending SMS:", err.message || err);
+    res.status(500).json({ error: `Failed to send SMS: ${err.message}` });
+  }
 });
 
 export default router;
