@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient.js";
 import { runValidationForProvider } from "./validationService.js";
 
 const scheduledJobs = new Map(); // Store scheduled jobs: jobId -> cron task
+const TIMEZONE = "Asia/Kolkata"; // IST timezone for all cron jobs
 
 /**
  * Initialize and start all cron jobs from database
@@ -58,13 +59,27 @@ function scheduleCronJob(jobData) {
   }
 
   try {
-    console.log(`[CronScheduler] Scheduling job ${jobId} with expression: ${expression}`);
+    console.log(`[CronScheduler] Scheduling job ${jobId} with expression: ${expression} (timezone: ${TIMEZONE})`);
 
-    // Schedule with node-cron
+    // Schedule with node-cron using IST timezone
     const task = cron.schedule(expression, async () => {
       console.log(`[CronScheduler] Executing cron job ${jobId} at ${new Date().toISOString()}`);
+      
+      // Update last_run_at in database
+      await supabase
+        .from("cron_jobs")
+        .update({ last_run_at: new Date().toISOString() })
+        .eq("id", jobId)
+        .catch(err => console.warn(`[CronScheduler] Failed to update last_run_at:`, err.message));
+
       await executeValidationRun(jobId);
+    }, {
+      scheduled: true,
+      timezone: TIMEZONE
     });
+
+    // Explicitly start the task to ensure it runs
+    task.start();
 
     // Store the task
     scheduledJobs.set(jobId, task);
@@ -246,4 +261,80 @@ export function stopAllCronJobs() {
   }
   scheduledJobs.clear();
   console.log("[CronScheduler] All cron jobs stopped");
+}
+
+/**
+ * Execute all active cron jobs immediately (used by external cron trigger endpoint).
+ * This is the fallback when in-memory node-cron tasks are lost due to server sleep/restart.
+ */
+export async function executeAllActiveCronJobs() {
+  console.log("[CronScheduler] External trigger: executing all active cron jobs...");
+
+  try {
+    const { data: cronJobs, error } = await supabase
+      .from("cron_jobs")
+      .select("*")
+      .eq("status", "ACTIVE");
+
+    if (error) {
+      console.error("[CronScheduler] Failed to load active cron jobs:", error.message || error);
+      return;
+    }
+
+    if (!cronJobs || cronJobs.length === 0) {
+      console.log("[CronScheduler] No active cron jobs to execute");
+      return;
+    }
+
+    // Re-initialize in-memory cron tasks if they were lost
+    if (scheduledJobs.size === 0) {
+      console.log("[CronScheduler] In-memory tasks were lost (server restarted). Re-initializing...");
+      for (const job of cronJobs) {
+        scheduleCronJob(job);
+      }
+    }
+
+    // Execute each active cron job
+    for (const job of cronJobs) {
+      console.log(`[CronScheduler] Triggering execution for job ${job.id}`);
+
+      // Update last_run_at
+      await supabase
+        .from("cron_jobs")
+        .update({ last_run_at: new Date().toISOString() })
+        .eq("id", job.id)
+        .catch(err => console.warn(`[CronScheduler] Failed to update last_run_at:`, err.message));
+
+      await executeValidationRun(job.id);
+    }
+
+    console.log("[CronScheduler] All active cron jobs triggered");
+  } catch (err) {
+    console.error("[CronScheduler] Error executing all cron jobs:", err.message || err);
+  }
+}
+
+/**
+ * Start a self-ping keep-alive interval to prevent Render from putting the server to sleep.
+ * Pings the /api/keep-alive endpoint every 14 minutes.
+ */
+export function startKeepAlive(port) {
+  const url = process.env.RENDER_EXTERNAL_URL
+    ? `${process.env.RENDER_EXTERNAL_URL}/api/keep-alive`
+    : `http://localhost:${port}/api/keep-alive`;
+
+  const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
+
+  setInterval(async () => {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        console.log(`[KeepAlive] Self-ping successful at ${new Date().toISOString()}`);
+      }
+    } catch (err) {
+      console.warn(`[KeepAlive] Self-ping failed:`, err.message);
+    }
+  }, KEEP_ALIVE_INTERVAL);
+
+  console.log(`[KeepAlive] Self-ping started, pinging ${url} every 14 minutes`);
 }

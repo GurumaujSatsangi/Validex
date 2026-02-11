@@ -16,7 +16,7 @@ import exportRoutes from "./routes/export.js";
 import cronJobRoutes from "./routes/cron-jobs.js";
 import { sendRunCompletionEmail } from "./services/agents/emailGenerationAgent.js";
 import { supabase } from "./supabaseClient.js";
-import { initializeCronJobs, stopAllCronJobs } from "./services/cronScheduler.js";
+import { initializeCronJobs, stopAllCronJobs, executeAllActiveCronJobs, startKeepAlive } from "./services/cronScheduler.js";
 
 dotenv.config();
 
@@ -50,6 +50,25 @@ export function createServer() {
     });
   });
 
+  // Endpoint for external cron services (e.g., Render Cron, cron-job.org) to trigger all active cron jobs.
+  // This is the fallback mechanism if in-memory node-cron tasks were lost due to server sleep/restart.
+  app.post("/api/cron-trigger", async (req, res) => {
+    try {
+      console.log(`[CronTrigger] External cron trigger received at ${new Date().toISOString()}`);
+      await executeAllActiveCronJobs();
+      res.status(200).json({ success: true, message: "Cron jobs triggered" });
+    } catch (err) {
+      console.error("[CronTrigger] Error:", err.message || err);
+      res.status(500).json({ error: "Failed to trigger cron jobs" });
+    }
+  });
+
+  // Keep-alive endpoint - Render pings this to prevent the service from sleeping
+  app.get("/api/keep-alive", (req, res) => {
+    console.log(`[KeepAlive] Pinged at ${new Date().toISOString()}`);
+    res.status(200).json({ status: "alive", timestamp: new Date().toISOString() });
+  });
+
   app.get("/cron-job", (req, res) => {
     res.redirect(301, "/cron-jobs");
   });
@@ -57,7 +76,7 @@ export function createServer() {
 
   app.get("/issues/:id",async(req,res)=>{
 
-    const {data,error} = await supabase.from("validation_issues").select("*").eq("provider_id",req.params.id);
+    const {data,error} = await supabase.from("validation_issues").select("*").eq("provider_id",req.params.id).eq( "status","OPEN");
     const {data:providerdata, error:providerissues} = await supabase.from("providers").select("*").eq("id",req.params.id).single();
 
     res.render("provider-issues.ejs",{issues:data,providerdata: providerdata});
@@ -158,6 +177,10 @@ export async function startServer({ port = process.env.PORT || 5000, host = "0.0
 
   // Initialize cron jobs after server starts
   await initializeCronJobs();
+
+  // Start self-ping keep-alive to prevent Render from sleeping the server
+  const actualPort = typeof server.address() === "object" ? server.address().port : port;
+  startKeepAlive(actualPort);
 
   return { app, server };
 }
