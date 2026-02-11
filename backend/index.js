@@ -54,6 +54,15 @@ export function createServer() {
     res.redirect(301, "/cron-jobs");
   });
 
+
+  app.get("/issues/:id",async(req,res)=>{
+
+    const {data,error} = await supabase.from("validation_issues").select("*").eq("provider_id",req.params.id);
+    const {data:providerdata, error:providerissues} = await supabase.from("providers").select("*").eq("id",req.params.id).single();
+
+    res.render("provider-issues.ejs",{issues:data,providerdata: providerdata});
+  })
+
   app.get("/cron-jobs", async (req, res) => {
     try {
       const { data, error } = await supabase

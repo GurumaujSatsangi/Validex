@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Provider Data Issues - Validex</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/css/styles.css" rel="stylesheet">
+</head>
+<body>
+                <h2>Welcome, <%= providerdata.name %></h2>
+            <h4>We have noticed the following issues in your data and we need your support and assistance in resolving these issues:</h4>
+
+
+     <table>
+                <tr>
+                    <td>Field of Issue</td>
+                    <td>Current Value</td>
+                    <td>Suggested Value</td>
+                    <td>Status</td>
+                    <td>Action </td>
+                    <td>Correct Value</td>
+                </tr>
+
+    <% if(issues && issues.length>0) { %>
+        <% issues.forEach(function(issues){ %>
+
+           
+                <tr>
+                    <td><%= issues.field_name %></td>
+                    <td><%= issues.old_value %></td>
+                    <td><%= issues.suggested_value %></td>
+                    <td><%= issues.status %></td>
+                    <td><a href="">Suggested Value is Correct (ACCEPT)</a><br>
+                    <a href="">Suggested Value is NOT Correct (REJECT)</a></td>
+                    <td>
+                        <textarea rows="5" disabled placeholder="Enter the Correct Value Here (This Field will be enabled only if you reject the issue)"></textarea>
+                    </td>
+                </tr>
+            </table>
+
+            
+        
+        
+        <% }) %>
+    
+    <% } %>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="/js/runs.js"></script>
+ 
+</body>
+</html>
