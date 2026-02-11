@@ -319,6 +319,7 @@ document.addEventListener('click', async (ev) => {
           .issues-table .badge { font-size: 0.7rem; padding: 3px 6px; }
           .issues-table .btn-sm { padding: 3px 6px; font-size: 0.7rem; }
           .issues-table a { font-size: 0.8rem; }
+          .issues-table .action-cell { display: flex; flex-direction: row; gap: 4px; align-items: center; flex-wrap: nowrap; }
           .issues-toolbar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
           .issues-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
           .issues-search-input { flex: 1; min-width: 260px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 0.95rem; }
