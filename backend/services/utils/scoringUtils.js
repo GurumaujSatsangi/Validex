@@ -27,6 +27,33 @@ function getTermFrequency(tokens) {
 }
 
 /**
+ * Calculate final confidence score from weighted components.
+ * Formula: 0.5 * sourceScore + 0.3 * addressScore + 0.2 * phoneScore
+ * @param {number} sourceScore - source reliability score in [0, 1]
+ * @param {number} addressScore - address match score in [0, 1]
+ * @param {number} phoneScore - phone match score in [0, 1]
+ * @returns {number} weighted confidence score in [0, 1]
+ */
+export function calculateConfidenceScore(sourceScore, addressScore, phoneScore) {
+  const inputs = [
+    ['sourceScore', sourceScore],
+    ['addressScore', addressScore],
+    ['phoneScore', phoneScore]
+  ];
+
+  for (const [name, value] of inputs) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new TypeError(`${name} must be a finite number`);
+    }
+    if (value < 0 || value > 1) {
+      throw new RangeError(`${name} must be between 0 and 1`);
+    }
+  }
+
+  return 0.5 * sourceScore + 0.3 * addressScore + 0.2 * phoneScore;
+}
+
+/**
  * Cosine similarity between two strings (0–1)
  * Tokenizes, builds TF vectors, computes cosine similarity
  * @param {string} textA
